@@ -50,12 +50,13 @@ struct attr_value_binder {
 
 /// The matcher that matches a constant foldable operation that has no side
 /// effect, no operands and produces a single result.
-template <typename AttrT> struct constant_op_binder {
+template <typename AttrT, typename ResultT = mlir::Type>
+struct constant_op_binder {
   AttrT *bind_value;
 
   /// Creates a matcher instance that binds the constant attribute value to
   /// bind_value if match succeeds.
-  constant_op_binder(AttrT *bind_value) : bind_value(bind_value) {}
+  explicit constant_op_binder(AttrT *bind_value) : bind_value(bind_value) {}
   /// Creates a matcher instance that doesn't bind if match succeeds.
   constant_op_binder() : bind_value(nullptr) {}
 
@@ -71,13 +72,16 @@ template <typename AttrT> struct constant_op_binder {
         if (auto attrT = attr.dyn_cast<AttrT>()) {
           if (bind_value)
             *bind_value = attrT;
-          return true;
+          return isa<ResultT>(op->getResult(0).getType());
         }
       }
     }
     return false;
   }
 };
+
+struct constant_index_op_binder<IntgerAttr, IntegerType>
+    : private constant_op_biner;
 
 /// The matcher that matches a constant scalar / vector splat / tensor splat
 /// integer operation and binds the constant integer value.
@@ -211,6 +215,18 @@ inline detail::constant_op_binder<Attribute> m_Constant() {
 template <typename AttrT>
 inline detail::constant_op_binder<AttrT> m_Constant(AttrT *bind_value) {
   return detail::constant_op_binder<AttrT>(bind_value);
+}
+
+/// Matches a constant index operation.
+inline detail::constant_index_op_binder m_ConstantIndex() {
+  return detail::constant_index_op_binder();
+}
+
+/// Matches a constant index operation and
+/// writes the integer value to bind_value.
+inline detail::constant_index_op_binder
+m_ConstantIndex(IntegerAttr *bind_value) {
+  return detail::constant_index_op_binder(bind_value);
 }
 
 /// Matches a constant scalar / vector splat / tensor splat integer one.

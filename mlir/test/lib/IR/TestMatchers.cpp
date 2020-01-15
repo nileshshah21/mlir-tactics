@@ -137,6 +137,22 @@ void test2(FuncOp f) {
     llvm::outs() << "Pattern add(add(a, constant), a) matched\n";
 }
 
+void test3(FuncOp f) {
+  auto a = m_Val(f.getArgument(0));
+  IntegerAttr integerAttrConstantIndex, integerAttrConstant;
+  auto mConstantIndex =
+      m_Op<MulIOp>(m_ConstantIndex(&integerAttrConstantIndex), a);
+  Operation *lastOp = f.getBody().front().back().getPrevNode();
+  if (mConstantIndex.match(lastOp))
+    llvm::outs()
+        << "Pattern mul(a, constantIndex) matched and bound constant to: "
+        << integerAttrConstantIndex.getInt() << "\n";
+  auto mConstant = m_Op<MulIOp>(m_Constant(&integerAttrConstant), a);
+  if (mConstant.match(lastOp))
+    llvm::outs() << "Pattern mul(a, constant) matched and bound constant to: "
+                 << integerAttrConstant.getInt() << "\n";
+}
+
 void TestMatchers::runOnFunction() {
   auto f = getFunction();
   llvm::outs() << f.getName() << "\n";
@@ -144,6 +160,8 @@ void TestMatchers::runOnFunction() {
     test1(f);
   if (f.getName() == "test2")
     test2(f);
+  if (f.getName() == "test3")
+    test3(f);
 }
 
 static PassRegistration<TestMatchers> pass("test-matchers",

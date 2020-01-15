@@ -192,13 +192,6 @@ ParseResult mlir::parseDimAndSymbolList(OpAsmParser &parser,
   return success();
 }
 
-/// Matches a ConstantIndexOp.
-/// TODO: This should probably just be a general matcher that uses m_Constant
-/// and checks the operation for an index type.
-static detail::op_matcher<ConstantIndexOp> m_ConstantIndex() {
-  return detail::op_matcher<ConstantIndexOp>();
-}
-
 //===----------------------------------------------------------------------===//
 // Common canonicalization pattern support logic
 //===----------------------------------------------------------------------===//

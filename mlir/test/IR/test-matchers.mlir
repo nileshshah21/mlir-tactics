@@ -41,3 +41,13 @@ func @test2(%a: f32) -> f32 {
 // CHECK-LABEL: test2
 //       CHECK:   Pattern add(add(a, constant), a) matched and bound constant to: 1.000000e+00
 //       CHECK:   Pattern add(add(a, constant), a) matched
+
+func @test3(%a: index) -> index {
+  %0 = constant 23: index
+  %1 = muli %0, %a: index
+  return %1: index
+}
+
+// CHECK-LABEL: test3
+//       CHECK:   Pattern mul(a, constantIndex) matched and bound constant to: 23
+//       CHECK:   Pattern mul(a, constant) matched and bound constant to: 23
