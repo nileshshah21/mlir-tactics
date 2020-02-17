@@ -263,6 +263,12 @@ void bindDims(MLIRContext *ctx, AffineExprTy &e, AffineExprTy2 &... exprs) {
   e = getAffineDimExpr(N, ctx);
   bindDims<N + 1, AffineExprTy2 &...>(ctx, exprs...);
 }
+
+template <typename AffineExprTy>
+void bindDims(MLIRContext *ctx, AffineExprTy &e, int N) {
+  e = getAffineDimExpr(N, ctx);
+}
+
 } // namespace detail
 
 /// Bind a list of AffineExpr references to DimExpr at positions:
@@ -270,6 +276,11 @@ void bindDims(MLIRContext *ctx, AffineExprTy &e, AffineExprTy2 &... exprs) {
 template <typename... AffineExprTy>
 void bindDims(MLIRContext *ctx, AffineExprTy &... exprs) {
   detail::bindDims<0>(ctx, exprs...);
+}
+
+template <typename AffineExprTy>
+void bindDims(MLIRContext *ctx, AffineExprTy &expr, int pos) {
+  detail::bindDims(ctx, expr, pos);
 }
 
 } // namespace mlir
