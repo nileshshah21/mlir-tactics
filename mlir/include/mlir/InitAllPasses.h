@@ -29,6 +29,7 @@
 #include "mlir/Conversion/ShapeToSCF/ShapeToSCF.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalgPass.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Conversion/VectorToROCDL/VectorToROCDL.h"
@@ -62,7 +63,7 @@ inline void registerAllPasses() {
   // Init general passes
 #define GEN_PASS_REGISTRATION
 #include "mlir/Transforms/Passes.h.inc"
-
+  
   // Conversion passes
 #define GEN_PASS_REGISTRATION
 #include "mlir/Conversion/Passes.h.inc"
