@@ -174,16 +174,27 @@ void test3(FuncOp f) {
     auto _i = m_Placeholder();
     auto _j = m_Placeholder();
     auto _k = m_Placeholder();
-    auto a = m_Op<AffineLoadOp>(_i, _k);
-    auto b = m_Op<AffineLoadOp>(_k, _j);
-    auto c = m_Op<AffineLoadOp>(_i, _j);
+    auto _A = m_ArrayPlaceholder();
+    auto _B = m_ArrayPlaceholder();
+    auto _C = m_ArrayPlaceholder();
+    auto a = m_Op<AffineLoadOp>(_A({_i, _k}));
+    auto b = m_Op<AffineLoadOp>(_B({_k, _j}));
+    auto c = m_Op<AffineLoadOp>(_C({_i, _j}));
     auto p1 = m_Op<AddFOp>(c, m_Op<MulFOp>(a, b));
     llvm::outs() << "Pattern add(C(i, j), mul(A(i, k), B(k, j))) matched "
                  << countMatches(f, p1) << " times\n";
     auto matchedI = pctx[_i];
     auto matchedJ = pctx[_j];
     auto matchedK = pctx[_k];
+    Value matchedA = nullptr;
+    Value matchedB = nullptr;
+    Value matchedC = nullptr;
+    matchedA = pctx[_A];
+    matchedB = pctx[_B];
+    matchedC = pctx[_C];
     if ((i != matchedI) || (j != matchedJ) || (k != matchedK))
+      llvm_unreachable("matching failed");
+    if ((!matchedA) || (!matchedB) || (!matchedC))
       llvm_unreachable("matching failed");
   }
 }

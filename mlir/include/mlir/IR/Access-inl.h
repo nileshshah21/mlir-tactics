@@ -5,6 +5,7 @@ namespace matchers {
 
 thread_local size_t m_Placeholder::nextId_ = 0;
 
+// FIXME: remove duplicate code.
 template <typename OpClass>
 bool op_load_store_matcher<OpClass>::matchLoadOp(AffineLoadOp &op) {
   size_t dims = op.getAffineMap().getNumResults();
@@ -55,6 +56,32 @@ bool op_load_store_matcher<OpClass>::match(Operation *op) {
   if (auto storeOp = dyn_cast<AffineStoreOp>(op))
     return matchStoreOp(storeOp);
   assert(0 && "expect AffineStoreOp or AffineLoadOp");
+  return false;
+}
+
+template <typename OpClass>
+bool op_load_store_array_matcher<OpClass>::match(Operation *op) {
+  auto p = op_load_store_matcher<OpClass>(arrayPlaceholder_.placeholders_);
+  if (!p.match(op))
+    return false;
+  auto matchingContext = arrayPlaceholder_.context();
+  if (auto loadOp = dyn_cast<AffineLoadOp>(op)) {
+    auto operand = loadOp.getMemRef();
+    auto isValid =
+        matchingContext->assignToPlaceholder(operand, arrayPlaceholder_.id_);
+    if (failed(isValid))
+      return false;
+    return true;
+  }
+  if (auto storeOp = dyn_cast<AffineStoreOp>(op)) {
+    auto operand = storeOp.getMemRef();
+    auto isValid =
+        matchingContext->assignToPlaceholder(operand, arrayPlaceholder_.id_);
+    if (failed(isValid))
+      return false;
+    return true;
+  }
+  llvm_unreachable("expect AffineStore or AffineLoad");
   return false;
 }
 
