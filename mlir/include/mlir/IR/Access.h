@@ -99,6 +99,22 @@ private:
   details::AffinePattern buildDefaultAffinePattern();
 };
 
+/// An arrayPlaceholder.
+class StructuredArrayPlaceholder : public m_Placeholder {
+public:
+  StructuredArrayPlaceholder() : placeholders_({}){};
+  StructuredArrayPlaceholder
+  operator()(SmallVector<m_Placeholder, 4> indexings) {
+    this->placeholders_.clear();
+    this->placeholders_ = indexings;
+    return *this;
+  }
+
+public:
+  SmallVector<m_Placeholder, 4> placeholders_;
+};
+using m_ArrayPlaceholder = StructuredArrayPlaceholder;
+
 /// Structure to avoid passing context information
 /// to all the API functions.
 class AccessPatternContext {
@@ -140,6 +156,15 @@ private:
   bool matchLoadOp(AffineLoadOp &op);
 };
 
+template <typename OpClass> class op_load_store_array_matcher {
+public:
+  StructuredArrayPlaceholder arrayPlaceholder_;
+  op_load_store_array_matcher() = delete;
+  op_load_store_array_matcher(StructuredArrayPlaceholder array)
+      : arrayPlaceholder_(array){};
+  bool match(Operation *op);
+};
+
 template <class T, class...> struct are_same : std::true_type {};
 
 template <class T, class U, class... TT>
@@ -152,6 +177,12 @@ inline op_load_store_matcher<OpClass> m_Op(m_Placeholder arg, Args... args) {
   static_assert(are_same<m_Placeholder, Args...>{},
                 "all args must be Placeholder");
   return op_load_store_matcher<OpClass>({arg, args...});
+}
+
+template <typename OpClass>
+inline op_load_store_array_matcher<OpClass>
+m_Op(StructuredArrayPlaceholder arg) {
+  return op_load_store_array_matcher<OpClass>(arg);
 }
 
 } // end namespace matchers
