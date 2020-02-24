@@ -69,6 +69,7 @@ void registerTestGpuParallelLoopMappingPass();
 void registerTestSCFUtilsPass();
 void registerTestVectorConversions();
 void registerVectorizerTestPass();
+void registerTacticsTestPass();
 } // namespace mlir
 
 static cl::opt<std::string>
@@ -145,6 +146,7 @@ void registerTestPasses() {
   registerTestSCFUtilsPass();
   registerTestVectorConversions();
   registerVectorizerTestPass();
+  registerTacticsTestPass();
 }
 #endif
 
