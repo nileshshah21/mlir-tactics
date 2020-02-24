@@ -3,7 +3,6 @@ namespace mlir {
 
 namespace matchers {
 
-thread_local size_t m_Placeholder::nextId_ = 0;
 
 // FIXME: remove duplicate code.
 template <typename OpClass>
