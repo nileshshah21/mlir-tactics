@@ -4,6 +4,8 @@ using namespace mlir;
 using namespace matchers;
 using namespace details;
 
+thread_local size_t m_Placeholder::nextId_ = 0;
+
 LogicalResult MatchingContext::getValueForId(size_t placeholderId,
                                              Value &value) const {
   auto it = placeholderMap_.find(placeholderId);
