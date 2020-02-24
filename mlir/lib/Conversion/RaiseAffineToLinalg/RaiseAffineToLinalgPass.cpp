@@ -5,6 +5,7 @@
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Access.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -25,6 +26,131 @@ static llvm::cl::opt<bool>
                llvm::cl::init(false));
 
 namespace {
+
+/// Class for matching C[i][j][k] = A[i][l] * B[j][l][k]
+class ContractionMatcherTranspose : public OpRewritePattern<AffineForOp> {
+public:
+  using OpRewritePattern<AffineForOp>::OpRewritePattern;
+
+  PatternMatchResult matchBody(Region &body, Value i, Value j, Value k, Value l,
+                               Value &operandA, Value &operandB,
+                               Value &operandC) const {
+    using namespace matchers;
+    {
+      AccessPatternContext pctx(body.getContext());
+
+      auto _i = m_Placeholder();
+      auto _j = m_Placeholder();
+      auto _k = m_Placeholder();
+      auto _l = m_Placeholder();
+
+      auto _A = m_ArrayPlaceholder();
+      auto _B = m_ArrayPlaceholder();
+      auto _C = m_ArrayPlaceholder();
+
+      auto a = m_Op<AffineLoadOp>(_A({_i, _l}));
+      auto b = m_Op<AffineLoadOp>(_B({_j, _l, _k}));
+      auto c = m_Op<AffineStoreOp>(_C({_i, _j, _k}));
+
+      auto contractionOp = m_Op<MulFOp>(a, b);
+
+      auto store = dyn_cast<AffineStoreOp>(*std::prev(body.front().end(), 2));
+      if (!matchPattern(store, c))
+        return matchFailure();
+
+      auto mul =
+          dyn_cast_or_null<MulFOp>(store.getValueToStore().getDefiningOp());
+      if ((!mul) || (!contractionOp.match(mul)))
+        return matchFailure();
+
+      if (std::distance(body.front().begin(), body.front().end()) != 5)
+        return matchFailure();
+
+      if ((i != pctx[_i]) || (j != pctx[_j]) || (k != pctx[_k]) ||
+          (l != pctx[_l]))
+        return matchFailure();
+
+      operandA = pctx[_A];
+      operandB = pctx[_B];
+      operandC = pctx[_C];
+    }
+    return matchSuccess();
+  }
+
+  PatternMatchResult transformOp(Operation *op, SmallVector<Value, 3> &operands,
+                                 PatternRewriter &rewriter) const {
+    using namespace edsc;
+    using namespace edsc::ops;
+    using namespace edsc::intrinsics;
+
+    auto permutationMap =
+        AffineMap::getPermutationMap({1, 0, 2}, rewriter.getContext());
+    auto transposedB = rewriter.create<linalg::TransposeOp>(
+        op->getLoc(), operands[1], AffineMapAttr::get(permutationMap));
+    ScopedContext scop(rewriter, op->getLoc());
+    AffineExpr i, j, k;
+    bindDims(op->getContext(), i, j, k);
+    ValueHandle v(transposedB);
+    auto reshapedB =
+        linalg_reshape(v, ArrayRef<ArrayRef<AffineExpr>>{i, {j, k}});
+    ValueHandle vv(operands[2]);
+    auto reshapedC =
+        linalg_reshape(vv, ArrayRef<ArrayRef<AffineExpr>>{i, {j, k}});
+
+    SmallVector<Value, 3> newOperands;
+    newOperands.push_back(operands[0]);
+    newOperands.push_back(reshapedB);
+    newOperands.push_back(reshapedC);
+    linalg_matmul(makeValueHandles(newOperands));
+    return matchSuccess();
+  }
+
+  PatternMatchResult
+  matchAndRewriteNestedPattern(Operation *op, PatternRewriter &rewriter) const {
+    Value operandA, operandB, operandC;
+    auto body = [this, &operandA, &operandB, &operandC](Operation &op) -> bool {
+      auto loop = cast<AffineForOp>(op);
+      auto l = loop.getInductionVar();
+      auto parent = loop.getParentOfType<AffineForOp>();
+      auto k = parent.getInductionVar();
+      parent = parent.getParentOfType<AffineForOp>();
+      auto j = parent.getInductionVar();
+      parent = parent.getParentOfType<AffineForOp>();
+      auto i = parent.getInductionVar();
+      return matchBody(loop.getLoopBody(), i, j, k, l, operandA, operandB,
+                       operandC)
+          .hasValue();
+    };
+
+    {
+      NestedPatternContext raii;
+      using namespace matcher;
+      auto m = For(For(For(For(body))));
+      SmallVector<NestedMatch, 1> matches;
+      m.match(op, &matches);
+      if (matches.empty())
+        return matchFailure();
+    }
+
+    if ((!operandA) || (!operandB) || (!operandC))
+      return matchFailure();
+
+    LLVM_DEBUG(llvm::dbgs() << "Match Contraction with Transposed operand!\n");
+
+    SmallVector<Value, 3> operands = {operandA, operandB, operandC};
+    if (!transformOp(op, operands, rewriter))
+      return matchFailure();
+
+    rewriter.eraseOp(op);
+    return matchSuccess();
+  }
+
+  // main rewriting function.
+  PatternMatchResult matchAndRewrite(AffineForOp op,
+                                     PatternRewriter &rewriter) const override {
+    return matchAndRewriteNestedPattern(op, rewriter);
+  }
+};
 
 /// Class for matching C[i][j][k] = A[i][l] * B[l][j][k].
 class ContractionMatcher : public OpRewritePattern<AffineForOp> {
@@ -274,6 +400,7 @@ void RaiseAffineToLinalgPass::runOnFunction() {
 
   patterns.insert<MatMulMatcher>(&getContext());
   patterns.insert<ContractionMatcher>(&getContext());
+  patterns.insert<ContractionMatcherTranspose>(&getContext());
 
   // run full conversion. As we discussed we want only
   // library calls.
