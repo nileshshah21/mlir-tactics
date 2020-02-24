@@ -34,6 +34,7 @@ set(LIBS
   MLIRPass
   MLIRTransforms
   MLIRTransformUtils
+  MLIRTestTactics
   MLIRSupport
   MLIRIR
   )
