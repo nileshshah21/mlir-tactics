@@ -1,21 +1,4 @@
-#include "mlir/Support/STLExtras.h"
-#include "mlir/TableGen/GenInfo.h"
-#include "mlir/TableGen/OpClass.h"
-#include "mlir/TableGen/Operator.h"
-
-#include "mlir/TableGen/Format.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/Support/FormatAdapters.h"
-#include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/Signals.h"
-#include "llvm/TableGen/Error.h"
-#include "llvm/TableGen/Record.h"
-#include "llvm/TableGen/TableGenBackend.h"
-
-#include "lang/Lexer.h"
-#include "lang/Parser.h"
+#include "MatchersGen.h"
 #include "llvm/Support/raw_ostream.h" // remove me.
 
 using namespace llvm;
@@ -33,70 +16,6 @@ template <> struct format_provider<identifierLine> {
   }
 };
 } // end namespace llvm
-
-namespace {
-class TacticsEmitter {
-public:
-  TacticsEmitter(Record *tactic, raw_ostream &os);
-  void emit(StringRef tacticName);
-
-private:
-  // pointer to current record.
-  Record *record_;
-
-  // pattern instantiation location
-  ArrayRef<llvm::SMLoc> loc_;
-
-  // tc parser.
-  Parser parser_;
-
-  raw_ostream &os;
-
-  // bind tensor name with emitted load matcher.
-  llvm::DenseMap<StringRef, int64_t> symbolTable_;
-
-  // counter to create unique names.
-  size_t counter = 0;
-
-  // get Location
-  using identifierLine = std::pair<StringRef, unsigned>;
-  std::vector<identifierLine> getLocation() const;
-
-  // emit matching logic.
-  void emitMatchLogic();
-
-  // emit rewriting logic.
-  void emitRewriteLogic();
-
-  // emit structural logic.
-  void emitStructuralMatchLogic(size_t nestedLoops);
-
-  // emit access logic.
-  using identifier = SmallSet<StringRef, 8>;
-  void emitAccessMatchLogic(const Comprehension &comprehension,
-                            const std::pair<identifier, identifier> &ids);
-
-  // emit operation logic.
-  void emitOperationMatchLogic(const Comprehension &comprehension);
-
-  // emit mathcher for store operation.
-  void emitStoreMatcherOp(const Ident &ident, const ListView<Ident> &indices);
-
-  // emit matcher for load operation.
-  void emitLoadMatcherOp(const Ident &ident, const ListView<TreeRef> &indices);
-
-  // emit an arithmetic operation. IsRhs is assert if we are dealing with
-  // the rhs operand.
-  void emitArithOperationMatcher(const TreeRef &t, bool isRhs = false);
-
-  // emit a binary operation.
-  void emitBinaryOperationMatcher(const TreeRef &t, StringRef op);
-
-  // emit a constant operation.
-  void emitConstantOperationMatcher(const Const &cst);
-};
-
-} // end namespace
 
 // Walk tree (see teckly).
 void walkTree(const TreeRef &tree, std::function<void(const TreeRef &)> fn) {
