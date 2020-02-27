@@ -2,7 +2,7 @@
 
 func @gemmT(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>) {
   // CHECK: linalg.transpose
-  // CHECK: linalg.generic
+  // CHECK-NEXT: linalg.generic
   affine.for %i = 0 to 42 {
     affine.for %j = 0 to 42 {
       affine.for %k = 0 to 42 {
