@@ -7,18 +7,54 @@
 #include "mlir/TableGen/Operator.h"
 
 #include "mlir/TableGen/Format.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallSet.h"
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
+#include <string>
 
 namespace mlir {
 
 namespace {
+class SymbolTableMap {
+public:
+  SymbolTableMap() : nextId_(0){};
+  std::string getNextVariable();
+  void insert(std::string key, std::string value);
+  void updateOrInsert(std::string key, std::string value);
+  std::string lookup(std::string key) const;
+  void clear();
+  void dump() const;
+
+private:
+  size_t nextId_;
+  std::map<std::string, std::string> symbolTable_;
+};
+
+class BuilderEmitter {
+public:
+  BuilderEmitter(llvm::Record *builder, raw_ostream &os);
+  void emit();
+
+private:
+  llvm::Record *record_;
+  llvm::raw_ostream &os;
+
+  void emitMatmul();
+  void emitMatmulHelpers();
+
+  std::string emitTranspose();
+  std::string emitTransposeHelpers();
+
+  void emitErase();
+
+public:
+  // FIXME make friend with TacticsEmitter instead of public.
+  static thread_local SymbolTableMap symbolTable_;
+};
+
 class TacticsEmitter {
 public:
   TacticsEmitter(llvm::Record *tactic, raw_ostream &os);
@@ -36,18 +72,17 @@ private:
 
   llvm::raw_ostream &os;
 
-  // bind tensor name with emitted load matcher.
-  llvm::DenseMap<StringRef, int64_t> symbolTable_;
-
-  // counter to create unique names.
-  size_t counter = 0;
+  // symbol table map.
+  SymbolTableMap symbolTable_;
 
   // get Location
   using identifierLine = std::pair<llvm::StringRef, unsigned>;
   std::vector<identifierLine> getLocation() const;
 
   // emit matching logic.
-  void emitMatchLogic();
+  using identifier = llvm::SmallSet<std::string, 8>;
+  void emitMatchLogic(const lang::Comprehension &comprehension,
+                      const std::pair<identifier, identifier> &ids);
 
   // emit rewriting logic.
   void emitRewriteLogic();
@@ -56,7 +91,6 @@ private:
   void emitStructuralMatchLogic(size_t nestedLoops);
 
   // emit access logic.
-  using identifier = llvm::SmallSet<StringRef, 8>;
   void emitAccessMatchLogic(const lang::Comprehension &comprehension,
                             const std::pair<identifier, identifier> &ids);
 

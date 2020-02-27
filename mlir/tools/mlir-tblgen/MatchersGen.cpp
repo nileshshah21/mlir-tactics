@@ -1,11 +1,13 @@
 #include "MatchersGen.h"
-#include "llvm/Support/raw_ostream.h" // remove me.
+#include "llvm/Support/Debug.h"
 
 using namespace llvm;
 using namespace mlir;
 using namespace lang;
 
 using mlir::tblgen::Operator;
+
+#define DEBUG_TYPE "mlir-tblgen-tactics"
 
 namespace llvm {
 using identifierLine = std::pair<StringRef, unsigned>;
@@ -17,6 +19,164 @@ template <> struct format_provider<identifierLine> {
 };
 } // end namespace llvm
 
+thread_local SymbolTableMap BuilderEmitter::symbolTable_;
+
+BuilderEmitter::BuilderEmitter(Record *record, raw_ostream &os)
+    : record_(record), os(os){};
+
+void BuilderEmitter::emitMatmulHelpers() {
+  auto recordInput = record_->getValueAsDef("inputs");
+  auto inputs = recordInput->getValueAsListOfStrings("inputs");
+
+  auto recordOut = record_->getValueAsDef("outputs");
+  auto outputs = recordOut->getValueAsListOfStrings("outputs");
+
+  assert((outputs.size() == 1) && "expect single output for matmul");
+  assert((inputs.size() > 1) && (inputs.size() < 4) &&
+         "expect 2 or 3 inputs for matmul");
+
+  std::vector<std::string> lookupInputs;
+  for (const auto &input : inputs)
+    lookupInputs.push_back(symbolTable_.lookup(input.str()));
+  std::string lookupOutput = symbolTable_.lookup(outputs[0].str());
+
+  // if inputs = 3, check that the output is also found as input.
+  if (lookupInputs.size() == 3) {
+    auto iterator =
+        std::find(lookupInputs.begin(), lookupInputs.end(), lookupOutput);
+    if (iterator == lookupInputs.end())
+      assert(0 && "expect output to be found among the inputs");
+    else
+      lookupInputs.erase(iterator);
+  }
+
+  os << formatv(
+      R"(
+    auto getOperandFromParamsMatmul = [&]() {
+        llvm::SmallVector<mlir::Value, 3> res = { {0}, {1}, {2} };
+        return res;
+    };)",
+      lookupOutput, lookupInputs[0], lookupInputs[1]);
+}
+
+void BuilderEmitter::emitMatmul() {
+  emitMatmulHelpers();
+  os << record_->getValueAsString("body");
+}
+
+std::string BuilderEmitter::emitTransposeHelpers() {
+  auto recordInput = record_->getValueAsDef("inputs");
+  auto inputs = recordInput->getValueAsListOfStrings("inputs");
+
+  auto recordOut = record_->getValueAsDef("outputs");
+  auto outputs = recordOut->getValueAsListOfStrings("outputs");
+
+  // maybe introduce some handy classes to operate on tablegen classes.
+  auto affineExpr =
+      record_->getValueAsDef("affineExpr")->getValueAsString("affineExpr");
+
+  assert((outputs.size() == 1) && "expect single output for transpose");
+  assert((inputs.size() == 1) && "expect single input for transpose");
+
+  std::string lookupInput = symbolTable_.lookup(inputs[0].str());
+
+  os << formatv(
+      R"(
+    auto getOperandFromParamsPermute = [&]() {
+      return {0};
+    };)",
+      lookupInput);
+
+  os << formatv(
+      R"(
+    auto getPermutationMapFromParamsPermute = []() {
+      return llvm::ArrayRef<unsigned>({0});
+    };)",
+      affineExpr);
+
+  return outputs[0].str();
+}
+
+std::string BuilderEmitter::emitTranspose() {
+  auto resTranspose = emitTransposeHelpers();
+  os << record_->getValueAsString("body");
+  return resTranspose;
+}
+
+void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
+
+void BuilderEmitter::emit() {
+  auto builderName = record_->getValueAsString("name");
+  LLVM_DEBUG(dbgs() << "emitting ---> " << builderName << "\n");
+
+  if (builderName.equals("matmul")) {
+    os.indent(4) << "{ // start scope matmul"
+                 << "\n";
+    emitMatmul();
+    os << "\n";
+    os.indent(4) << "} // end scope matmul"
+                 << "\n\n";
+    return;
+  }
+  if (builderName.equals("permute")) {
+    auto emittedVar = symbolTable_.getNextVariable();
+    os.indent(4) << "mlir::Value " << emittedVar << ";"
+                 << "\n";
+    os.indent(4) << "{ // start scope permute"
+                 << "\n";
+    auto resPermute = emitTranspose();
+    os << "\n";
+    os.indent(4) << emittedVar << " = permute; "
+                 << "\n";
+    os.indent(4) << "} // end scope matmul"
+                 << "\n\n";
+    symbolTable_.updateOrInsert(resPermute, emittedVar);
+    return;
+  }
+  if (builderName.equals("erase")) {
+    emitErase();
+    return;
+  }
+  assert(0 && "case not convered");
+}
+
+void SymbolTableMap::dump() const {
+  for (const auto &elem : symbolTable_) {
+    LLVM_DEBUG(dbgs() << "elem.first  : " << elem.first << "\n");
+    LLVM_DEBUG(dbgs() << "elem.second : " << elem.second << "\n");
+    LLVM_DEBUG(dbgs() << "-----\n");
+  }
+}
+
+void SymbolTableMap::clear() { symbolTable_.clear(); }
+
+void SymbolTableMap::updateOrInsert(std::string key, std::string value) {
+  auto it = symbolTable_.find(key);
+  if (it == symbolTable_.end())
+    insert(key, value);
+  else
+    it->second = value;
+}
+
+std::string SymbolTableMap::getNextVariable() {
+  std::string var = "var" + std::to_string(nextId_++);
+  return var;
+}
+
+void SymbolTableMap::insert(std::string key, std::string value) {
+  symbolTable_.insert(std::make_pair(key, value));
+}
+
+std::string SymbolTableMap::lookup(std::string key) const {
+  auto it = symbolTable_.find(key);
+  if (it != symbolTable_.end())
+    return it->second;
+  LLVM_DEBUG(dbgs() << "key: " << key << "\n");
+  dump();
+  assert(0 && "expect value to be found");
+  return "nullptr";
+}
+
 // Walk tree (see teckly).
 void walkTree(const TreeRef &tree, std::function<void(const TreeRef &)> fn) {
   fn(tree);
@@ -25,35 +185,35 @@ void walkTree(const TreeRef &tree, std::function<void(const TreeRef &)> fn) {
 }
 
 // collect iterators from comprehension.
-std::pair<SmallSet<StringRef, 8>, SmallSet<StringRef, 8>>
+using identifier = SmallSet<std::string, 8>;
+std::pair<identifier, identifier>
 collectIteratorsAndTensorNames(const Comprehension &comprehension) {
-  SmallSet<StringRef, 8> iterators;
-  SmallSet<StringRef, 8> names;
+  SmallSet<std::string, 8> iterators;
+  SmallSet<std::string, 8> names;
 
   for (const auto &lhs : comprehension.indices()) {
-    iterators.insert(StringRef(lhs.name()));
+    iterators.insert(lhs.name());
   }
-  names.insert(StringRef(comprehension.ident().name()));
+  names.insert(comprehension.ident().name());
 
   walkTree(comprehension.rhs(), [&](const TreeRef &t) {
     if (t->kind() == TK_APPLY) {
       auto tc = Apply(t);
-      names.insert(StringRef(tc.name().name()));
+      names.insert(tc.name().name());
       auto tcIters = tc.arguments();
       for (const auto &tcIter : tcIters) {
         if (tcIter->kind() == TK_IDENT)
-          iterators.insert(StringRef(Ident(tcIter).name()));
+          iterators.insert(Ident(tcIter).name());
       }
     }
   });
-
   return std::make_pair(iterators, names);
 }
 
 void TacticsEmitter::emitStoreMatcherOp(const Ident &ident,
                                         const ListView<Ident> &indices) {
   os.indent(8) << "auto ";
-  os << "var" << counter++ << " = m_Op<mlir::AffineStoreOp>(";
+  os << symbolTable_.getNextVariable() << " = m_Op<mlir::AffineStoreOp>(";
   os << "_" << StringRef(ident.name()) << "({";
   for (size_t i = 0; i < indices.size(); i++) {
     if (i == indices.size() - 1) {
@@ -68,9 +228,10 @@ void TacticsEmitter::emitStoreMatcherOp(const Ident &ident,
 // TODO: merge with emitStoreMatcherOp.
 void TacticsEmitter::emitLoadMatcherOp(const Ident &ident,
                                        const ListView<TreeRef> &indices) {
-  symbolTable_.insert({StringRef(ident.name()), counter});
+  auto var = symbolTable_.getNextVariable();
+  symbolTable_.insert(ident.name(), var); // A -> var0
   os.indent(8) << "auto ";
-  os << "var" << counter++ << " = m_Op<mlir::AffineLoadOp>(";
+  os << var << " = m_Op<mlir::AffineLoadOp>(";
   os << "_" << StringRef(ident.name()) << "({";
   for (size_t i = 0; i < indices.size(); i++) {
     if (i == indices.size() - 1) {
@@ -109,7 +270,7 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t, bool isRhs) {
   case TK_APPLY: {
     auto tc = Apply(t);
     auto tcName = Ident(tc.name());
-    os << "var" << symbolTable_.lookup(StringRef(tcName.name()));
+    os << symbolTable_.lookup(tcName.name());
     if (!isRhs)
       os << ", ";
     return;
@@ -173,13 +334,14 @@ void TacticsEmitter::emitOperationMatchLogic(
   os << R"(
         if ((!rootOp) || (!bodyMatcher.match(rootOp)))
           return false;
-        return true;
   )";
+  os << "\n";
 }
 
+using identifier = SmallSet<std::string, 8>;
 void TacticsEmitter::emitAccessMatchLogic(
     const Comprehension &comprehension,
-    const std::pair<SmallSet<StringRef, 8>, SmallSet<StringRef, 8>> &ids) {
+    const std::pair<identifier, identifier> &ids) {
   os << R"(
       {)";
   os << R"(
@@ -197,7 +359,17 @@ void TacticsEmitter::emitAccessMatchLogic(
   }
   os << "\n";
   emitOperationMatchLogic(comprehension);
+  // bind captured values.
+  for (const auto &iterator : ids.first)
+    os.indent(8) << iterator << " = "
+                 << "pctx["
+                 << "_" << iterator << "];\n";
+  for (const auto &tensorName : ids.second)
+    os.indent(8) << tensorName << " = "
+                 << "pctx["
+                 << "_" << tensorName << "];\n";
   os << R"(
+        return true;
       })";
 }
 
@@ -230,30 +402,46 @@ void TacticsEmitter::emitStructuralMatchLogic(size_t nestedLoops) {
     })";
 }
 
-void TacticsEmitter::emitMatchLogic() {
-  auto comprehension = Comprehension(parser_.parseStmt());
-  auto iteratorsAndTensorNames = collectIteratorsAndTensorNames(comprehension);
+using identifier = llvm::SmallSet<std::string, 8>;
+void TacticsEmitter::emitMatchLogic(
+    const lang::Comprehension &comprehension,
+    const std::pair<identifier, identifier> &iteratorsAndTensorNames) {
+
+  // declare each iterators and array name as Value type. The
+  // value will get filled if we match the pattern.
+  auto iterators = iteratorsAndTensorNames.first;
+  for (const auto &iterator : iterators)
+    os.indent(4) << "mlir::Value " << iterator << ";"
+                 << "\n";
+  for (const auto &tensorName : iteratorsAndTensorNames.second)
+    os.indent(4) << "mlir::Value " << tensorName << ";"
+                 << "\n";
   os << R"(
-    auto body = [](mlir::Operation &op) -> bool {
+    auto body = [&](mlir::Operation &op) -> bool {
       auto loop = llvm::cast<mlir::AffineForOp>(op);
       mlir::Region &loopBody = loop.getLoopBody();
       using namespace mlir::matchers;
   )";
+  // emit placeholders and arrayPlaceholders.
   emitAccessMatchLogic(comprehension, iteratorsAndTensorNames);
   os << R"(
-    }; // end callback.
+    }; // end body callback.
   )";
-  emitStructuralMatchLogic(iteratorsAndTensorNames.second.size());
+  // emit nestedMatchers.
+  emitStructuralMatchLogic(iterators.size());
 }
 
 void TacticsEmitter::emitRewriteLogic() {
-  os.indent(4);
-  os << "rewriter.eraseOp(op);\n";
+  auto builders = record_->getValueAsListOfDefs("builders");
+  for (const auto builder : builders) {
+    BuilderEmitter(builder, os).emit();
+  }
 }
 
 TacticsEmitter::TacticsEmitter(Record *record, raw_ostream &os)
     : record_(record), loc_(record_->getLoc()),
-      parser_(Parser(record_->getValueAsString("pattern").str())), os(os){};
+      parser_(Parser(record_->getValueAsString("pattern").str())), os(os),
+      symbolTable_(SymbolTableMap()){};
 
 std::vector<std::pair<StringRef, unsigned>>
 TacticsEmitter::getLocation() const {
@@ -288,11 +476,19 @@ void TacticsEmitter::emit(StringRef tacticName) {
   mlir::PatternMatchResult matchAndRewrite(mlir::AffineForOp op,
                                            mlir::PatternRewriter &rewriter) const override {)";
   os << "\n";
-  os.indent(4) << "// Match";
-  emitMatchLogic();
+  os.indent(4) << "// Match\n";
+  auto comprehension = Comprehension(parser_.parseStmt());
+  auto iteratorsAndTensorNames = collectIteratorsAndTensorNames(comprehension);
+  emitMatchLogic(comprehension, iteratorsAndTensorNames);
   os << "\n";
   os.indent(4) << "// Rewrite\n";
+  // fill in the symbol table.
+  for (const auto &tensor : iteratorsAndTensorNames.second)
+    BuilderEmitter::symbolTable_.insert(tensor, tensor);
   emitRewriteLogic();
+  BuilderEmitter::symbolTable_.clear();
+  // erase the content when the tactics is done.
+  os << "\n";
   os.indent(4) << "return matchSuccess();\n";
   os << "  };\n";
   os << "};\n";

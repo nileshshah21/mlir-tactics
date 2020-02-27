@@ -1,10 +1,12 @@
-#include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Access.h"
 #include "mlir/IR/Matchers.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
-#include "mlir/Analysis/NestedMatcher.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace {
@@ -23,7 +25,6 @@ struct TestTacticsDriver : public mlir::FunctionPass<TestTacticsDriver> {
 
 namespace mlir {
 void registerTacticsTestPass() {
-  mlir::PassRegistration<TestTacticsDriver>("test-tactics",
-                                            "Run test tactics");
+  mlir::PassRegistration<TestTacticsDriver>("test-tactics", "Run test tactics");
 }
 } // end namespace mlir
