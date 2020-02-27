@@ -42,8 +42,6 @@ std::string kindToToken(int kind) {
   switch (kind) {
 #define DEFINE_CASE(tok, _, str)                                       \
   case tok:                                                            \
-    //if (!strcmp(str, ""))                                              \
-    //  throw std::runtime_error("No token for: " + kindToString(kind)); \
     return str;
     TC_FORALL_TOKEN_KINDS(DEFINE_CASE)
 #undef DEFINE_CASE
