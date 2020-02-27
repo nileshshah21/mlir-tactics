@@ -152,8 +152,7 @@ public:
   bool match(Operation *op);
 
 private:
-  bool matchStoreOp(AffineStoreOp &op);
-  bool matchLoadOp(AffineLoadOp &op);
+  template <typename T> bool matchLoadOrStoreOp(T &op);
 };
 
 template <typename OpClass> class op_load_store_array_matcher {
