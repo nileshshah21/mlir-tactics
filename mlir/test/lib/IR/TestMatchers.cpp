@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Access.h"
 #include "mlir/IR/Function.h"
@@ -140,24 +141,32 @@ void test2(FuncOp f) {
     llvm::outs() << "Pattern add(add(a, constant), a) matched\n";
 }
 
-std::vector<SmallVector<AffineForOp, 4>> getNestedLoops(FuncOp f) {
-  std::vector<SmallVector<AffineForOp, 4>> bands;
-  auto getLoopNest = [&](AffineForOp forOp) {
-    SmallVector<AffineForOp, 4> band;
+template <typename T>
+void getNestedLoopsImpl(std::vector<SmallVector<T, 4>> &bands, FuncOp f) {
+  auto getLoopNest = [&](T forOp) {
+    SmallVector<T, 4> band;
     getPerfectlyNestedLoops(band, forOp);
     bands.push_back(band);
   };
   for (auto &block : f)
     for (auto &op : block)
-      if (auto forOp = dyn_cast<AffineForOp>(op))
+      if (auto forOp = dyn_cast<T>(op))
         getLoopNest(forOp);
-  return bands;
+}
+
+void getNestedLoops(std::vector<SmallVector<AffineForOp, 4>> &bands, FuncOp f) {
+  getNestedLoopsImpl(bands, f);
+}
+
+void getNestedLoops(std::vector<SmallVector<loop::ForOp, 4>> &bands, FuncOp f) {
+  getNestedLoopsImpl(bands, f);
 }
 
 void test3(FuncOp f) {
   if (f.getNumArguments() != 3)
     llvm_unreachable("matcher test func must have 3 args");
-  auto bands = getNestedLoops(f);
+  std::vector<SmallVector<AffineForOp, 4>> bands;
+  getNestedLoops(bands, f);
   if (bands.size() != 1)
     llvm_unreachable("expect single loop nest");
   auto loops = bands[0];
@@ -202,7 +211,8 @@ void test3(FuncOp f) {
 void test4(FuncOp f) {
   if (f.getNumArguments() != 3)
     llvm_unreachable("matcher test func must have 3 args");
-  auto bands = getNestedLoops(f);
+  std::vector<SmallVector<AffineForOp, 4>> bands;
+  getNestedLoops(bands, f);
   if (bands.size() != 1)
     llvm_unreachable("expect single loop nest");
   auto loops = bands[0];
@@ -229,6 +239,52 @@ void test4(FuncOp f) {
   }
 }
 
+void test5(FuncOp f) {
+  if (f.getNumArguments() != 3)
+    llvm_unreachable("matcher test func must have 3 args");
+  std::vector<SmallVector<loop::ForOp, 4>> bands;
+  getNestedLoops(bands, f);
+  if (bands.size() != 1)
+    llvm_unreachable("expect single loop nest");
+  auto loops = bands[0];
+  if (loops.size() != 3)
+    llvm_unreachable("matcher test func must have 3 loops");
+  auto i = loops[0].getInductionVar();
+  auto j = loops[1].getInductionVar();
+  auto k = loops[2].getInductionVar();
+
+  auto ctx = f.getBody().getContext();
+  using namespace mlir::matchers;
+  {
+    AccessPatternContext pctx(ctx);
+    auto _i = m_Placeholder();
+    auto _j = m_Placeholder();
+    auto _k = m_Placeholder();
+    auto _A = m_ArrayPlaceholder();
+    auto _B = m_ArrayPlaceholder();
+    auto _C = m_ArrayPlaceholder();
+    auto a = m_Op<LoadOp>(_A({_i, _k}));
+    auto b = m_Op<LoadOp>(_B({_k, _j}));
+    auto c = m_Op<LoadOp>(_C({_i, _j}));
+    auto p1 = m_Op<AddFOp>(c, m_Op<MulFOp>(a, b));
+    llvm::outs() << "Pattern add(C(i, j), mul(A(i, k), B(k, j))) matched "
+                 << countMatches(f, p1) << " times\n";
+    auto matchedI = pctx[_i];
+    auto matchedJ = pctx[_j];
+    auto matchedK = pctx[_k];
+    Value matchedA = nullptr;
+    Value matchedB = nullptr;
+    Value matchedC = nullptr;
+    matchedA = pctx[_A];
+    matchedB = pctx[_B];
+    matchedC = pctx[_C];
+    if ((i != matchedI) || (j != matchedJ) || (k != matchedK))
+      llvm_unreachable("matching failed");
+    if ((!matchedA) || (!matchedB) || (!matchedC))
+      llvm_unreachable("matching failed");
+  }
+}
+
 void TestMatchers::runOnFunction() {
   auto f = getFunction();
   llvm::outs() << f.getName() << "\n";
@@ -240,6 +296,8 @@ void TestMatchers::runOnFunction() {
     test3(f);
   if (f.getName() == "matmulTransB")
     test4(f);
+  if (f.getName() == "matmulLoop")
+    test5(f);
 }
 
 namespace mlir {
