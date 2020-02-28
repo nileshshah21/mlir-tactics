@@ -2,6 +2,7 @@
 #define MLIR_IR_ACCESS_MATCHER_H_
 
 #include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h" // remove me
 
@@ -152,7 +153,15 @@ public:
   bool match(Operation *op);
 
 private:
-  template <typename T> bool matchLoadOrStoreOp(T &op);
+  bool matchLoadOrStoreOp(OpClass op);
+
+  bool matchStoreOpInAffine(AffineStoreOp op);
+  bool matchLoadOpInAffine(AffineLoadOp op);
+  template <typename A> bool matchLoadOrStoreOpInAffine(A op);
+
+  bool matchStoreOpInLoop(StoreOp op);
+  bool matchLoadOpInLoop(LoadOp op);
+  template <typename L> bool matchLoadOrStoreOpInLoop(L op);
 };
 
 template <typename OpClass> class op_load_store_array_matcher {
@@ -162,6 +171,10 @@ public:
   op_load_store_array_matcher(StructuredArrayPlaceholder array)
       : arrayPlaceholder_(array){};
   bool match(Operation *op);
+
+private:
+  template <typename T>
+  bool assingToArrayPlaceholder(T op, details::MatchingContext *ctx);
 };
 
 template <class T, class...> struct are_same : std::true_type {};
