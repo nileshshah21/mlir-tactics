@@ -80,3 +80,25 @@ func @matmulTransB(%A: memref<42x40xf32>, %B: memref<40x41xf32>, %C: memref<42x4
 // CHECK-LABEL: matmulTransB
 //       CHECK: Pattern add(C(i, j), mul(A(i, k), B(k, j))) matched 0 times
 //       CHECK: Pattern add(C(i, j), mul(A(i, k), B(j, k))) matched 1 times
+
+func @matmulLoop(%A: memref<42x42xf32>, %B: memref<42x42xf32>, %C: memref<42x42xf32>) {
+  %c42 = constant 42 : index
+  %c0 = constant 0 : index
+  %c1 = constant 1 : index
+  loop.for %i = %c0 to %c42 step %c1 {
+    loop.for %j = %c0 to %c42 step %c1 {
+      loop.for %k = %c0 to %c42 step %c1 {
+        %0 = load %A[%i, %k] : memref<42x42xf32>
+        %1 = load %B[%k, %j] : memref<42x42xf32>
+        %2 = load %C[%i, %j] : memref<42x42xf32>
+        %3 = mulf %0, %1 : f32
+        %4 = addf %2, %3 : f32
+        store %4, %C[%i, %j] : memref<42x42xf32>
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: matmulLoop
+//       CHECK:  Pattern add(C(i, j), mul(A(i, k), B(k, j))) matched 1 times
