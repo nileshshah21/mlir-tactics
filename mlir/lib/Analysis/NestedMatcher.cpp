@@ -7,7 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/NestedMatcher.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -101,7 +102,9 @@ void NestedPattern::matchOne(Operation *op,
   }
 }
 
-static bool isAffineForOp(Operation &op) { return isa<AffineForOp>(op); }
+static bool isForOp(Operation &op) {
+  return ((isa<AffineForOp>(op)) || (isa<loop::ForOp>(op)));
+}
 
 static bool isAffineIfOp(Operation &op) { return isa<AffineIfOp>(op); }
 
@@ -129,19 +132,17 @@ NestedPattern If(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
   });
 }
 
-NestedPattern For(NestedPattern child) {
-  return NestedPattern(child, isAffineForOp);
-}
+NestedPattern For(NestedPattern child) { return NestedPattern(child, isForOp); }
 NestedPattern For(FilterFunctionType filter, NestedPattern child) {
   return NestedPattern(
-      child, [=](Operation &op) { return isAffineForOp(op) && filter(op); });
+      child, [=](Operation &op) { return isForOp(op) && filter(op); });
 }
 NestedPattern For(ArrayRef<NestedPattern> nested) {
-  return NestedPattern(nested, isAffineForOp);
+  return NestedPattern(nested, isForOp);
 }
 NestedPattern For(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
   return NestedPattern(
-      nested, [=](Operation &op) { return isAffineForOp(op) && filter(op); });
+      nested, [=](Operation &op) { return isForOp(op) && filter(op); });
 }
 
 bool isLoadOrStore(Operation &op) {
