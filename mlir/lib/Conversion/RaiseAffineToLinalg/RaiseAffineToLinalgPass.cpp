@@ -1,6 +1,8 @@
 #include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalgPass.h"
 #include "mlir/Analysis/NestedMatcher.h"
+#include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalg.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -27,7 +29,73 @@ static llvm::cl::opt<bool>
 
 namespace {
 
-/// Class for matching C[i][j][k] = A[i][l] * B[j][l][k]
+// insert a symbol reference to "fName", inserting it into the module
+// if necessary.
+static FlatSymbolRefAttr getOrInsertFunction(PatternRewriter &rewriter,
+                                             ModuleOp module, std::string fName,
+                                             const ArrayRef<Type> &types) {
+  auto *context = module.getContext();
+  if (module.lookupSymbol(fName))
+    return SymbolRefAttr::get(fName, context);
+  auto libFnInfoType = FunctionType::get(types, {}, rewriter.getContext());
+  OpBuilder::InsertionGuard guard(rewriter);
+  rewriter.setInsertionPoint(module.getBody(),
+                             std::prev(module.getBody()->end()));
+  rewriter.create<FuncOp>(module.getLoc(), fName, libFnInfoType,
+                          ArrayRef<NamedAttribute>{});
+  return SymbolRefAttr::get(fName, context);
+}
+
+// return a value representing the access into a global array with
+// name "name", create the array if necessary.
+static Value getOrCreateGlobalArray(Location loc, OpBuilder &builder,
+                                    StringRef name,
+                                    SmallVector<int64_t, 4> &values,
+                                    ModuleOp module,
+                                    LLVM::LLVMDialect *llvmDialect) {
+  // create the global at the entry of the module.
+  LLVM::GlobalOp global;
+  if (!(global = module.lookupSymbol<LLVM::GlobalOp>(name))) {
+    OpBuilder::InsertionGuard insertGuard(builder);
+    builder.setInsertionPointToStart(module.getBody());
+    auto type = LLVM::LLVMType::getArrayTy(
+        LLVM::LLVMType::getInt8Ty(llvmDialect), values.size());
+    auto attr = builder.getI64ArrayAttr(values);
+    global =
+        builder.create<LLVM::GlobalOp>(loc, type, true, LLVM::Linkage::Internal,
+                                       name, builder.getArrayAttr(attr));
+  }
+
+  // Get the pointer to the first int in the global array.
+  Value globalPtr = builder.create<LLVM::AddressOfOp>(loc, global);
+  Value cst0 = builder.create<LLVM::ConstantOp>(
+      loc, LLVM::LLVMType::getInt64Ty(llvmDialect),
+      builder.getIntegerAttr(builder.getIndexType(), 0));
+  return builder.create<LLVM::GEPOp>(loc,
+                                     LLVM::LLVMType::getInt8PtrTy(llvmDialect),
+                                     globalPtr, ArrayRef<Value>({cst0, cst0}));
+}
+
+static SmallVector<int64_t, 8> applyPermutation(ArrayRef<int64_t> shape,
+                                                ArrayRef<int64_t> permutation) {
+  assert((shape.size() == permutation.size()) && "must be equal");
+  SmallVector<int64_t, 8> result{};
+  for (size_t i = 0; i < shape.size(); i++) {
+    result.push_back(shape[permutation[i]]);
+  }
+  return result;
+}
+
+// helper function for out-of-place transposition.
+static MemRefType getTransposedMemref(MemRefType source,
+                                      ArrayRef<int64_t> permutation, Type t) {
+  auto sourceMemRefShape = source.getShape();
+  auto res = MemRefType::get(applyPermutation(sourceMemRefShape, permutation),
+                             t, {}, 0);
+  return res;
+}
+
+/// Class for matching C[i][j][k] += A[i][l] * B[j][l][k]
 class ContractionMatcherTranspose : public OpRewritePattern<AffineForOp> {
 public:
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
@@ -50,20 +118,21 @@ public:
 
       auto a = m_Op<AffineLoadOp>(_A({_i, _l}));
       auto b = m_Op<AffineLoadOp>(_B({_j, _l, _k}));
-      auto c = m_Op<AffineStoreOp>(_C({_i, _j, _k}));
+      auto c = m_Op<AffineLoadOp>(_C({_i, _j, _k}));
+      auto s = m_Op<AffineStoreOp>(_C({_i, _j, _k}));
 
-      auto contractionOp = m_Op<MulFOp>(a, b);
+      auto contractionOp = m_Op<AddFOp>(m_Op<MulFOp>(a, b), c);
 
       auto store = dyn_cast<AffineStoreOp>(*std::prev(body.front().end(), 2));
-      if (!matchPattern(store, c))
+      if (!matchPattern(store, s))
         return matchFailure();
 
-      auto mul =
-          dyn_cast_or_null<MulFOp>(store.getValueToStore().getDefiningOp());
-      if ((!mul) || (!contractionOp.match(mul)))
+      auto add =
+          dyn_cast_or_null<AddFOp>(store.getValueToStore().getDefiningOp());
+      if ((!add) || (!contractionOp.match(add)))
         return matchFailure();
 
-      if (std::distance(body.front().begin(), body.front().end()) != 5)
+      if (std::distance(body.front().begin(), body.front().end()) != 7)
         return matchFailure();
 
       if ((i != pctx[_i]) || (j != pctx[_j]) || (k != pctx[_k]) ||
@@ -79,29 +148,111 @@ public:
 
   PatternMatchResult transformOp(Operation *op, SmallVector<Value, 3> &operands,
                                  PatternRewriter &rewriter) const {
-    using namespace edsc;
-    using namespace edsc::ops;
-    using namespace edsc::intrinsics;
+    if (!clEmitCall) {
+      // emit linalg.
+      using namespace edsc;
+      using namespace edsc::ops;
+      using namespace edsc::intrinsics;
 
-    auto permutationMap =
-        AffineMap::getPermutationMap({1, 0, 2}, rewriter.getContext());
-    auto transposedB = rewriter.create<linalg::TransposeOp>(
-        op->getLoc(), operands[1], AffineMapAttr::get(permutationMap));
-    ScopedContext scop(rewriter, op->getLoc());
-    AffineExpr i, j, k;
-    bindDims(op->getContext(), i, j, k);
-    ValueHandle v(transposedB);
-    auto reshapedB =
-        linalg_reshape(v, ArrayRef<ArrayRef<AffineExpr>>{i, {j, k}});
-    ValueHandle vv(operands[2]);
-    auto reshapedC =
-        linalg_reshape(vv, ArrayRef<ArrayRef<AffineExpr>>{i, {j, k}});
+      auto permutationMap =
+          AffineMap::getPermutationMap({1, 0, 2}, rewriter.getContext());
+      auto transposedB = rewriter.create<linalg::TransposeOp>(
+          op->getLoc(), operands[1], AffineMapAttr::get(permutationMap));
+      ScopedContext scop(rewriter, op->getLoc());
+      AffineExpr i, j, k;
+      bindDims(op->getContext(), i, j, k);
+      ValueHandle v(transposedB);
+      auto reshapedB =
+          linalg_reshape(v, ArrayRef<ArrayRef<AffineExpr>>{i, {j, k}});
+      ValueHandle vv(operands[2]);
+      auto reshapedC =
+          linalg_reshape(vv, ArrayRef<ArrayRef<AffineExpr>>{i, {j, k}});
 
-    SmallVector<Value, 3> newOperands;
-    newOperands.push_back(operands[0]);
-    newOperands.push_back(reshapedB);
-    newOperands.push_back(reshapedC);
-    linalg_matmul(makeValueHandles(newOperands));
+      SmallVector<Value, 3> newOperands;
+      newOperands.push_back(operands[0]);
+      newOperands.push_back(reshapedB);
+      newOperands.push_back(reshapedC);
+      linalg_matmul(makeValueHandles(newOperands));
+    } else {
+      // emit blas.
+      auto operandA = operands[0];
+      auto operandC = operands[2];
+      auto operandBType = operands[1].getType();
+      auto module = op->getParentOfType<ModuleOp>();
+      auto f32Type = FloatType::getF32(module.getContext());
+      // auto *llvmDialect =
+      //    op->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
+      // create a global array representing the permutation.
+      SmallVector<int64_t, 4> permutation = {1, 0, 2};
+      // Value permutationVar =
+      //    getOrCreateGlobalArray(op->getLoc(), rewriter, "permutation",
+      //                           permutation, module, llvmDialect);
+      // create an output buffer for the transposition.
+      auto transposedBType = getTransposedMemref(
+          operandBType.dyn_cast<MemRefType>(), permutation, f32Type);
+      auto transposedB =
+          rewriter.create<AllocOp>(op->getLoc(), transposedBType).getResult();
+      // create transpose call.
+      auto functionName = composeFunctionCallName(
+          FUNCTION::TRANSPOSE, ArrayRef<Type>{operandBType, transposedBType});
+      auto symbolFn =
+          getOrInsertFunction(rewriter, module, functionName,
+                              ArrayRef<Type>{operandBType, transposedBType});
+      rewriter.setInsertionPoint(op);
+      rewriter.create<CallOp>(op->getLoc(), symbolFn, ArrayRef<Type>{},
+                              ArrayRef<Value>{operands[1], transposedB});
+
+      // new buffer for reshaped tensors C and B.
+      auto operandCType = operands[2].getType();
+      auto operandCShape = operandCType.dyn_cast<MemRefType>().getShape();
+      auto transposedBShape = transposedBType.getShape();
+      auto reshapedCType = MemRefType::get(
+          {operandCShape[0], operandCShape[1] * operandCShape[2]}, f32Type, {},
+          0);
+      auto reshapedBType = MemRefType::get(
+          {transposedBShape[0], transposedBShape[1] * transposedBShape[2]},
+          f32Type, {}, 0);
+      auto reshapedC =
+          rewriter.create<AllocOp>(op->getLoc(), reshapedCType).getResult();
+      auto reshapedB =
+          rewriter.create<AllocOp>(op->getLoc(), reshapedBType).getResult();
+
+      // reshape B and C.
+      functionName = composeFunctionCallName(
+          FUNCTION::RESHAPE, ArrayRef<Type>{transposedBType, reshapedBType});
+      symbolFn =
+          getOrInsertFunction(rewriter, module, functionName,
+                              ArrayRef<Type>{transposedBType, reshapedBType});
+      rewriter.create<CallOp>(op->getLoc(), symbolFn, ArrayRef<Type>{},
+                              ArrayRef<Value>{transposedB, reshapedB});
+      functionName = composeFunctionCallName(
+          FUNCTION::RESHAPE, ArrayRef<Type>{operandCType, reshapedCType});
+      symbolFn =
+          getOrInsertFunction(rewriter, module, functionName,
+                              ArrayRef<Type>{operandCType, reshapedCType});
+      rewriter.create<CallOp>(op->getLoc(), symbolFn, ArrayRef<Type>{},
+                              ArrayRef<Value>{operandC, reshapedC});
+
+      // matmul.
+      auto operandAType = operandA.getType();
+      functionName = composeFunctionCallName(
+          FUNCTION::MATMUL,
+          ArrayRef<Type>{operandAType, reshapedBType, reshapedCType});
+      symbolFn = getOrInsertFunction(
+          rewriter, module, functionName,
+          ArrayRef<Type>{operandAType, reshapedBType, reshapedCType});
+      rewriter.create<CallOp>(op->getLoc(), functionName, ArrayRef<Type>{},
+                              ArrayRef<Value>{operandA, reshapedB, reshapedC});
+
+      // reshaped C.
+      functionName = composeFunctionCallName(
+          FUNCTION::RESHAPE, ArrayRef<Type>{reshapedCType, operandCType});
+      symbolFn =
+          getOrInsertFunction(rewriter, module, functionName,
+                              ArrayRef<Type>{reshapedCType, operandCType});
+      rewriter.create<CallOp>(op->getLoc(), functionName, ArrayRef<Type>{},
+                              ArrayRef<Value>{reshapedC, operandC});
+    }
     return matchSuccess();
   }
 
@@ -152,7 +303,7 @@ public:
   }
 };
 
-/// Class for matching C[i][j][k] = A[i][l] * B[l][j][k].
+/// Class for matching C[i][j][k] += A[i][l] * B[l][j][k].
 class ContractionMatcher : public OpRewritePattern<AffineForOp> {
 public:
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
@@ -175,20 +326,21 @@ public:
 
       auto a = m_Op<AffineLoadOp>(_A({_i, _l}));
       auto b = m_Op<AffineLoadOp>(_B({_l, _j, _k}));
-      auto c = m_Op<AffineStoreOp>(_C({_i, _j, _k}));
+      auto c = m_Op<AffineLoadOp>(_C({_i, _j, _k}));
+      auto s = m_Op<AffineStoreOp>(_C({_i, _j, _k}));
 
-      auto contractionOp = m_Op<MulFOp>(a, b);
+      auto contractionOp = m_Op<AddFOp>(m_Op<MulFOp>(a, b), c);
 
       auto store = dyn_cast<AffineStoreOp>(*std::prev(body.front().end(), 2));
-      if (!matchPattern(store, c))
+      if (!matchPattern(store, s))
         return matchFailure();
 
-      auto mul =
-          dyn_cast_or_null<MulFOp>(store.getValueToStore().getDefiningOp());
-      if ((!mul) || (!contractionOp.match(mul)))
+      auto add =
+          dyn_cast_or_null<AddFOp>(store.getValueToStore().getDefiningOp());
+      if ((!add) || (!contractionOp.match(add)))
         return matchFailure();
 
-      if (std::distance(body.front().begin(), body.front().end()) != 5)
+      if (std::distance(body.front().begin(), body.front().end()) != 7)
         return matchFailure();
 
       if ((i != pctx[_i]) || (j != pctx[_j]) || (k != pctx[_k]) ||
@@ -236,7 +388,63 @@ public:
 
     SmallVector<Value, 3> operands = {operandA, operandB, operandC};
     if (clEmitCall) {
-      assert(0 && "not implemented yet!");
+      // emit blas.
+      auto module = op->getParentOfType<ModuleOp>();
+      auto f32Type = FloatType::getF32(module.getContext());
+
+      auto operandAType = operandA.getType();
+      auto operandBType = operandB.getType();
+      auto operandCType = operandC.getType();
+      auto operandBShape = operandBType.dyn_cast<MemRefType>().getShape();
+      auto operandCShape = operandCType.dyn_cast<MemRefType>().getShape();
+
+      // new buffer for reshaped tensors C and B.
+      auto reshapedCType = MemRefType::get(
+          {operandCShape[0], operandCShape[1] * operandCShape[2]}, f32Type, {},
+          0);
+      auto reshapedBType = MemRefType::get(
+          {operandBShape[0], operandBShape[1] * operandBShape[2]}, f32Type, {},
+          0);
+      auto reshapedC =
+          rewriter.create<AllocOp>(op->getLoc(), reshapedCType).getResult();
+      auto reshapedB =
+          rewriter.create<AllocOp>(op->getLoc(), reshapedBType).getResult();
+
+      // reshape B and C.
+      auto functionName = composeFunctionCallName(
+          FUNCTION::RESHAPE, ArrayRef<Type>{operandBType, reshapedBType});
+      auto symbolFn =
+          getOrInsertFunction(rewriter, module, functionName,
+                              ArrayRef<Type>{operandBType, reshapedBType});
+      rewriter.setInsertionPoint(op);
+      rewriter.create<CallOp>(op->getLoc(), symbolFn, ArrayRef<Type>{},
+                              ArrayRef<Value>{operands[1], reshapedB});
+
+      symbolFn =
+          getOrInsertFunction(rewriter, module, functionName,
+                              ArrayRef<Type>{operandCType, reshapedCType});
+      rewriter.create<CallOp>(op->getLoc(), symbolFn, ArrayRef<Type>{},
+                              ArrayRef<Value>{operands[2], reshapedC});
+
+      // matmul.
+      functionName = composeFunctionCallName(
+          FUNCTION::MATMUL,
+          ArrayRef<Type>{operandAType, reshapedBType, reshapedCType});
+      symbolFn = getOrInsertFunction(
+          rewriter, module, functionName,
+          ArrayRef<Type>{operandAType, reshapedBType, reshapedCType});
+      rewriter.create<CallOp>(op->getLoc(), functionName, ArrayRef<Type>{},
+                              ArrayRef<Value>{operandA, reshapedB, reshapedC});
+
+      // reshape C.
+      functionName = composeFunctionCallName(
+          FUNCTION::RESHAPE, ArrayRef<Type>{reshapedCType, operandCType});
+      symbolFn =
+          getOrInsertFunction(rewriter, module, functionName,
+                              ArrayRef<Type>{reshapedCType, operandCType});
+      rewriter.create<CallOp>(op->getLoc(), functionName, ArrayRef<Type>{},
+                              ArrayRef<Value>{reshapedC, operandC});
+
     } else {
       // emit linalg.
       using namespace edsc;
@@ -257,7 +465,7 @@ public:
       newOperands.push_back(operands[0]);
       newOperands.push_back(reshapedB);
       newOperands.push_back(reshapedC);
-      linalg_matmul(makeValueHandles(newOperands)); // mul A * B = C
+      linalg_matmul(makeValueHandles(newOperands)); // mul A * B += C
     }
     rewriter.eraseOp(op);
     return matchSuccess();
@@ -360,15 +568,14 @@ public:
       auto operandAType = operandA.getType();
       auto operandBType = operandB.getType();
       auto operandCType = operandC.getType();
-      SmallVector<Type, 4> inputTypes{operandAType, operandBType, operandCType};
-      auto libFnType = FunctionType::get(inputTypes, {}, rewriter.getContext());
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPoint(module.getBody(),
-                                 std::prev(module.getBody()->end()));
-      rewriter.create<FuncOp>(op->getLoc(), "myMatmul", libFnType,
-                              ArrayRef<NamedAttribute>{});
+      auto functionName = composeFunctionCallName(
+          FUNCTION::MATMUL,
+          ArrayRef<Type>{operandAType, operandBType, operandCType});
+      auto symbolFn = getOrInsertFunction(
+          rewriter, module, functionName,
+          ArrayRef<Type>{operandAType, operandBType, operandCType});
       rewriter.setInsertionPoint(op);
-      rewriter.create<CallOp>(op->getLoc(), "myMatmul", ArrayRef<Type>{},
+      rewriter.create<CallOp>(op->getLoc(), symbolFn, ArrayRef<Type>{},
                               operands);
     } else {
       // emit linalg.
@@ -393,7 +600,8 @@ public:
 void RaiseAffineToLinalgPass::runOnFunction() {
 
   ConversionTarget target(getContext());
-  target.addLegalDialect<mlir::linalg::LinalgDialect, StandardOpsDialect>();
+  target.addLegalDialect<mlir::linalg::LinalgDialect, StandardOpsDialect,
+                         LLVM::LLVMDialect>();
   target.addLegalOp<ReturnOp, AllocOp, ModuleOp, ModuleTerminatorOp, FuncOp>();
 
   OwningRewritePatternList patterns;
