@@ -17,7 +17,7 @@ func @gemm(%arg0: memref<42x42xf32>, %arg1: memref<42x42xf32>, %arg2: memref<42x
   return
 }
 
-func @contraction(%C: memref<42x42x42xf32>, %A: memref<42x42xf32>, %B: memref<42x42x42xf32>) {
+func @contractionIJK.IL.LJK(%C: memref<42x42x42xf32>, %A: memref<42x42xf32>, %B: memref<42x42x42xf32>) {
   // CHECK: linalg.reshape
   // CHECK-NEXT: linalg.reshape
   // CHECK-NEXT: linalg.generic
@@ -27,8 +27,10 @@ func @contraction(%C: memref<42x42x42xf32>, %A: memref<42x42xf32>, %B: memref<42
         affine.for %l = 0 to 42 {
           %0 = affine.load %A[%i, %l] : memref<42x42xf32>
           %1 = affine.load %B[%l, %j, %k] : memref<42x42x42xf32>
+          %2 = affine.load %C[%i, %j, %k] : memref<42x42x42xf32>
           %3 = mulf %0, %1 : f32
-          affine.store %3, %C[%i, %j, %k] : memref<42x42x42xf32>
+          %4 = addf %3, %2 : f32
+          affine.store %4, %C[%i, %j, %k] : memref<42x42x42xf32>
         }
       }
     }
@@ -36,7 +38,7 @@ func @contraction(%C: memref<42x42x42xf32>, %A: memref<42x42xf32>, %B: memref<42
   return
 }
 
-func @contractionT(%C: memref<5x6x7xf32>, %A: memref<5x8xf32>, %B: memref<6x8x7xf32>) {
+func @contractionIJK.IL.JLK(%C: memref<5x6x7xf32>, %A: memref<5x8xf32>, %B: memref<6x8x7xf32>) {
   // CHECK: linalg.transpose
   // CHECK-NEXT: linalg.reshape
   // CHECK-NEXT: linalg.reshape
@@ -47,8 +49,10 @@ func @contractionT(%C: memref<5x6x7xf32>, %A: memref<5x8xf32>, %B: memref<6x8x7x
         affine.for %l = 0 to 8 {
           %0 = affine.load %A[%i, %l] : memref<5x8xf32>
           %1 = affine.load %B[%j, %l, %k] : memref<6x8x7xf32>
+          %2 = affine.load %C[%i, %j, %k] : memref<5x6x7xf32>
           %3 = mulf %0, %1 : f32
-          affine.store %3, %C[%i, %j, %k] : memref<5x6x7xf32>
+          %4 = addf %3, %2 : f32
+          affine.store %4, %C[%i, %j, %k] : memref<5x6x7xf32>
         }
       }
     }
