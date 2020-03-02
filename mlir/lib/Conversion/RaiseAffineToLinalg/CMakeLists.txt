@@ -1,6 +1,5 @@
 add_llvm_library(MLIRRaiseAffineToLinalgTransforms 
-  RaiseAffineToLinalg.cpp 
-  RaiseAffineToLinalgPass.cpp
+   RaiseAffineToLinalgPass.cpp
 
 ADDITIONAL_HEADER_DIRS 
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/Linalg 
