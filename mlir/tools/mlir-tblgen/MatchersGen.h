@@ -97,16 +97,14 @@ private:
   // emit operation logic.
   void emitOperationMatchLogic(const lang::Comprehension &comprehension);
 
-  // emit mathcher for store operation.
-  void emitStoreMatcherOp(const lang::Ident &ident,
-                          const lang::ListView<lang::Ident> &indices);
-
   // emit matcher for load operation.
-  void emitLoadMatcherOp(const lang::Ident &ident,
-                         const lang::ListView<lang::TreeRef> &indices);
+  template <typename T>
+  void emitLoadOrStoreMatcherOp(const lang::Ident &ident,
+                                const lang::ListView<T> &indices,
+                                StringRef operation);
 
   // emit an arithmetic operation. IsRhs is assert if we are dealing with
-  // the rhs operand.
+  // the rhs operand
   void emitArithOperationMatcher(const lang::TreeRef &t, bool isRhs = false);
 
   // emit a binary operation.
@@ -115,6 +113,27 @@ private:
   // emit a constant operation.
   void emitConstantOperationMatcher(const lang::Const &cst);
 };
+
+// TODO: handle expressions (i.e., 2*i + 1.)
+template <typename T>
+void TacticsEmitter::emitLoadOrStoreMatcherOp(const lang::Ident &ident,
+                                              const lang::ListView<T> &indices,
+                                              StringRef operation) {
+  auto var = symbolTable_.getNextVariable();
+  if (operation.equals("mlir::AffineLoadOp"))
+    symbolTable_.insert(ident.name(), var); // A -> var0
+  os.indent(8) << "auto ";
+  os << var << " = m_Op<" << operation << ">(";
+  os << "_" << ident.name() << "({";
+  for (size_t i = 0; i < indices.size(); i++) {
+    if (i == indices.size() - 1) {
+      os << "_";
+      os << lang::Ident(indices[indices.size() - 1]).name();
+      os << "}));";
+    } else
+      os << "_" << lang::Ident(indices[i]).name() << ", ";
+  }
+}
 } // end namespace
 } // namespace mlir
 #endif
