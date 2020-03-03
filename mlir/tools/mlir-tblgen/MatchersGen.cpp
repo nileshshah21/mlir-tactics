@@ -213,8 +213,9 @@ collectIteratorsAndTensorNames(const Comprehension &comprehension) {
 void TacticsEmitter::emitBinaryOperationMatcher(const TreeRef &t,
                                                 StringRef op) {
   os << "m_Op<" << op << ">(";
-  emitArithOperationMatcher(t->trees().at(0), false);
-  emitArithOperationMatcher(t->trees().at(1), true);
+  emitArithOperationMatcher(t->trees().at(0));
+  os << ", ";
+  emitArithOperationMatcher(t->trees().at(1));
   os << ")";
 }
 
@@ -222,7 +223,7 @@ void TacticsEmitter::emitConstantOperationMatcher(const Const &cst) {
   assert(0 && "not implemented");
 }
 
-void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t, bool isRhs) {
+void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t) {
   switch (t->kind()) {
   case '*':
     return emitBinaryOperationMatcher(t, "mlir::MulFOp");
@@ -239,8 +240,6 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t, bool isRhs) {
     auto tc = Apply(t);
     auto tcName = Ident(tc.name());
     os << symbolTable_.lookup(tcName.name());
-    if (!isRhs)
-      os << ", ";
     return;
   }
   case TK_IDENT: {
