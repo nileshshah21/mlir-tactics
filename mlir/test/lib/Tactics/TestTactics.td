@@ -81,7 +81,7 @@ class Tactics<string p, list<Builder> b = []> {
 }
 
 // what the user need to write
-def liftToMatmulTactic : Tactics<"C(i,j) = A(i,k) * B(k,j)", [
+def liftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
   matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
