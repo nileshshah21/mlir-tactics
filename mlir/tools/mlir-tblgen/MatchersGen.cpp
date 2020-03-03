@@ -210,38 +210,6 @@ collectIteratorsAndTensorNames(const Comprehension &comprehension) {
   return std::make_pair(iterators, names);
 }
 
-void TacticsEmitter::emitStoreMatcherOp(const Ident &ident,
-                                        const ListView<Ident> &indices) {
-  os.indent(8) << "auto ";
-  os << symbolTable_.getNextVariable() << " = m_Op<mlir::AffineStoreOp>(";
-  os << "_" << StringRef(ident.name()) << "({";
-  for (size_t i = 0; i < indices.size(); i++) {
-    if (i == indices.size() - 1) {
-      os << "_" << StringRef(Ident(indices[indices.size() - 1]).name());
-      os << "}));";
-    } else
-      os << "_" << StringRef(Ident(indices[i]).name()) << ", ";
-  }
-}
-
-// TODO: handle expressions (i.e., 2*i + 1.)
-// TODO: merge with emitStoreMatcherOp.
-void TacticsEmitter::emitLoadMatcherOp(const Ident &ident,
-                                       const ListView<TreeRef> &indices) {
-  auto var = symbolTable_.getNextVariable();
-  symbolTable_.insert(ident.name(), var); // A -> var0
-  os.indent(8) << "auto ";
-  os << var << " = m_Op<mlir::AffineLoadOp>(";
-  os << "_" << StringRef(ident.name()) << "({";
-  for (size_t i = 0; i < indices.size(); i++) {
-    if (i == indices.size() - 1) {
-      os << "_" << StringRef(Ident(indices[indices.size() - 1]).name());
-      os << "}));";
-    } else
-      os << "_" << StringRef(Ident(indices[i]).name()) << ", ";
-  }
-}
-
 void TacticsEmitter::emitBinaryOperationMatcher(const TreeRef &t,
                                                 StringRef op) {
   os << "m_Op<" << op << ">(";
@@ -290,7 +258,8 @@ void TacticsEmitter::emitOperationMatchLogic(
   auto assignment = comprehension.assignment();
   switch (assignment->kind()) {
   case '=':
-    emitStoreMatcherOp(comprehension.ident(), comprehension.indices());
+    emitLoadOrStoreMatcherOp(comprehension.ident(), comprehension.indices(),
+                             "mlir::AffineStoreOp");
     break;
   default:
     assert(0 && "other assignment operators not implemented!");
@@ -310,7 +279,7 @@ void TacticsEmitter::emitOperationMatchLogic(
   walkTree(comprehension.rhs(), [&](const TreeRef &t) {
     if (t->kind() == TK_APPLY) {
       auto tc = Apply(t);
-      emitLoadMatcherOp(tc.name(), tc.arguments());
+      emitLoadOrStoreMatcherOp(tc.name(), tc.arguments(), "mlir::AffineLoadOp");
       os << "\n";
     }
   });
