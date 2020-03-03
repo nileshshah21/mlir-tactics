@@ -81,6 +81,10 @@ class Tactics<string p, list<Builder> b = []> {
 }
 
 // what the user need to write
+def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
+  eraseOpBuilder
+]>;
+
 def liftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
   matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
