@@ -105,6 +105,7 @@ private:
 
   // emit an arithmetic operation. IsRhs is assert if we are dealing with
   // the rhs operand
+  void emitArithOperationMatcher(const lang::Comprehension &comprehension);
   void emitArithOperationMatcher(const lang::TreeRef &t, bool isRhs = false);
 
   // emit a binary operation.

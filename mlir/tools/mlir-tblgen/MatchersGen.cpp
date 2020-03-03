@@ -252,6 +252,50 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t, bool isRhs) {
   }
 }
 
+void TacticsEmitter::emitArithOperationMatcher(
+    const lang::Comprehension &comprehension) {
+  auto assignment = comprehension.assignment();
+  auto rootOperation = assignment;
+  switch (assignment->kind()) {
+  case TK_PLUS_EQ: {
+    os << "m_Op<mlir::AddFOp>("
+       << symbolTable_.lookup(comprehension.ident().name()) << ", ";
+    emitArithOperationMatcher(comprehension.rhs());
+    os << ");";
+    break;
+  }
+  case '=': {
+    emitArithOperationMatcher(comprehension.rhs());
+    os << ";";
+    rootOperation = comprehension.rhs();
+    break;
+  }
+  default:
+    assert(0 && "assignment not supported");
+  }
+
+  auto rootOperationAsString = "undefined";
+  switch (rootOperation->kind()) {
+  case '*':
+    rootOperationAsString = "mlir::MulFOp";
+    break;
+  case TK_PLUS_EQ:
+    rootOperationAsString = "mlir::AddFOp";
+    break;
+  default:
+    assert(0 && "root operation not supported");
+  }
+
+  os << formatv(
+      R"(
+        auto rootOp = 
+          llvm::dyn_cast_or_null<{0}>(store.getValueToStore().getDefiningOp());
+        if ((!rootOp) || (!bodyMatcher.match(rootOp)))
+          return false;
+    )",
+      rootOperationAsString);
+}
+
 void TacticsEmitter::emitOperationMatchLogic(
     const Comprehension &comprehension) {
   // emit the only one store operation.
@@ -261,6 +305,14 @@ void TacticsEmitter::emitOperationMatchLogic(
     emitLoadOrStoreMatcherOp(comprehension.ident(), comprehension.indices(),
                              "mlir::AffineStoreOp");
     break;
+  case TK_PLUS_EQ: {
+    emitLoadOrStoreMatcherOp(comprehension.ident(), comprehension.indices(),
+                             "mlir::AffineStoreOp");
+    os << "\n";
+    emitLoadOrStoreMatcherOp(comprehension.ident(), comprehension.indices(),
+                             "mlir::AffineLoadOp");
+    break;
+  }
   default:
     assert(0 && "other assignment operators not implemented!");
   }
@@ -285,25 +337,7 @@ void TacticsEmitter::emitOperationMatchLogic(
   });
   os.indent(8) << "auto bodyMatcher = ";
   // emit operation matcher.
-  emitArithOperationMatcher(comprehension.rhs());
-  os << ";\n";
-
-  auto rootOperation = comprehension.rhs();
-  switch (rootOperation->kind()) {
-  case '*': {
-    os << R"(
-        auto rootOp = 
-          llvm::dyn_cast_or_null<mlir::MulFOp>(store.getValueToStore().getDefiningOp());
-      )";
-    break;
-  }
-  default:
-    assert(0 && "operation not supported");
-  }
-  os << R"(
-        if ((!rootOp) || (!bodyMatcher.match(rootOp)))
-          return false;
-  )";
+  emitArithOperationMatcher(comprehension);
   os << "\n";
 }
 
