@@ -42,8 +42,11 @@ private:
   llvm::Record *record_;
   llvm::raw_ostream &os;
 
+  // matmul builders/helpers.
   void emitMatmul();
   void emitMatmulHelpers();
+  SmallVector<std::string, 3> getMatmulOperand();
+  void emitMatmulBlas();
 
   std::string emitTranspose();
   std::string emitTransposeHelpers();

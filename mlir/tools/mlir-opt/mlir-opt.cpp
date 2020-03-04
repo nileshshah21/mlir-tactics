@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
@@ -69,7 +70,8 @@ void registerTestGpuParallelLoopMappingPass();
 void registerTestSCFUtilsPass();
 void registerTestVectorConversions();
 void registerVectorizerTestPass();
-void registerTacticsTestPass();
+void registerTacticsTestLinalgPass();
+void registerTacticsTestBlasPass();
 } // namespace mlir
 
 static cl::opt<std::string>
@@ -146,7 +148,8 @@ void registerTestPasses() {
   registerTestSCFUtilsPass();
   registerTestVectorConversions();
   registerVectorizerTestPass();
-  registerTacticsTestPass();
+  registerTacticsTestLinalgPass();
+  registerTacticsTestBlasPass();
 }
 #endif
 
@@ -171,6 +174,7 @@ int main(int argc, char **argv) {
 
   // Parse pass names in main to ensure static initialization completed.
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
+
 
   if(showDialects) {
     llvm::outs() << "Registered Dialects:\n";

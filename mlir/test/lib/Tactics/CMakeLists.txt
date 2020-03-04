@@ -1,23 +1,43 @@
 set(LLVM_OPTIONAL_SOURCES
-  TestTactics.cpp
+  TestTacticsLinalg.cpp
+  TestTacticsBlas.cpp
 )
 
 set(LLVM_TARGET_DEFINITIONS TestTactics.td)
-mlir_tablegen(TestTactics.inc -gen-tactics-defs)
-add_public_tablegen_target(MLIRTestTacticsInc)
+mlir_tablegen(TestTacticsLinalg.inc -gen-tactics-linalg)
+mlir_tablegen(TestTacticsBlas.inc -gen-tactics-blas)
+add_public_tablegen_target(MLIRTestTacticsLinalgInc)
+add_public_tablegen_target(MLIRTestTacticsBlasInc)
 
-add_llvm_library(MLIRTestTactics
-  TestTactics.cpp
+add_llvm_library(MLIRTestTacticsLinalg
+  TestTacticsLinalg.cpp
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/IR
 )
 
-
-add_dependencies(MLIRTestTactics
-  MLIRTestTacticsInc
+add_llvm_library(MLIRTestTacticsBlas
+  TestTacticsBlas.cpp
+  ADDITIONAL_HEADER_DIRS
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/IR
 )
 
-target_link_libraries(MLIRTestTactics
+add_dependencies(MLIRTestTacticsBlas
+  MLIRTestTacticsBlasInc
+)
+
+add_dependencies(MLIRTestTacticsLinalg
+  MLIRTestTacticsLinalgInc
+)
+
+target_link_libraries(MLIRTestTacticsBlas
+  MLIRDialect
+  MLIRIR
+  MLIRPass
+  LLVMSupport
+  MLIRAffineOps
+) 
+
+target_link_libraries(MLIRTestTacticsLinalg
   MLIRDialect
   MLIRIR
   MLIRPass
