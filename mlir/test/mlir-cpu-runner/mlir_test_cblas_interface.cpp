@@ -15,6 +15,8 @@
 #include <assert.h>
 #include <iostream>
 
+#include "dnnl.hpp"
+
 extern "C" void
 _mlir_ciface_linalg_fill_viewf32_f32(StridedMemRefType<float, 0> *X, float f) {
   X->data[X->offset] = f;
@@ -99,9 +101,50 @@ extern "C" void _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
     printMemRefMetaData(std::cerr, *C);
     return;
   }
+
   mlir_test_cblas_sgemm(
       CBLAS_ORDER::CblasRowMajor, CBLAS_TRANSPOSE::CblasNoTrans,
       CBLAS_TRANSPOSE::CblasNoTrans, C->sizes[0], C->sizes[1], A->sizes[1],
       1.0f, A->data + A->offset, A->strides[0], B->data + B->offset,
       B->strides[0], 1.0f, C->data + C->offset, C->strides[0]);
+}
+
+extern "C" void _mlir_ciface_Matmul_42x42x42(StridedMemRefType<float, 2> *C,
+                                             StridedMemRefType<float, 2> *B,
+                                             StridedMemRefType<float, 2> *A) {
+  if (A->strides[1] != B->strides[1] || A->strides[1] != C->strides[1] ||
+      A->strides[1] != 1 || A->sizes[0] < A->strides[1] ||
+      B->sizes[0] < B->strides[1] || C->sizes[0] < C->strides[1] ||
+      C->sizes[0] != A->sizes[0] || C->sizes[1] != B->sizes[1] ||
+      A->sizes[1] != B->sizes[0]) {
+    printMemRefMetaData(std::cerr, *A);
+    printMemRefMetaData(std::cerr, *B);
+    printMemRefMetaData(std::cerr, *C);
+    return;
+  }
+  std::cout << "\nA -> \n";
+  printMemRefMetaData(std::cerr, *A);
+  std::cout << "\nB -> \n";
+  printMemRefMetaData(std::cerr, *B);
+  std::cout << "\nC -> \n";
+  printMemRefMetaData(std::cerr, *C);
+  std::cout << "\n";
+  size_t M = C->sizes[0];
+  size_t N = C->sizes[1];
+  size_t K = A->sizes[1];
+  size_t lda = K;
+  size_t ldb = N;
+  size_t ldc = N;
+
+  auto res =
+      dnnl_sgemm('N', 'N', M, N, K, 1.0, A->data + A->offset, lda,
+                 B->data + B->offset, ldb, 1.0, C->data + C->offset, ldc);
+  if (res != dnnl_success)
+    assert(0 && "dnnl_sgemm failed");
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view42x42xf32_f32(StridedMemRefType<float, 2> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
 }
