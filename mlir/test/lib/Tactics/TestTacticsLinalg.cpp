@@ -10,11 +10,12 @@
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace {
-#include "TestTactics.inc"
+#include "TestTacticsLinalg.inc"
 }
 
 namespace {
-struct TestTacticsDriver : public mlir::FunctionPass<TestTacticsDriver> {
+struct TestTacticsLinalgDriver
+    : public mlir::FunctionPass<TestTacticsLinalgDriver> {
   void runOnFunction() override {
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
@@ -24,7 +25,8 @@ struct TestTacticsDriver : public mlir::FunctionPass<TestTacticsDriver> {
 } // end namespace
 
 namespace mlir {
-void registerTacticsTestPass() {
-  mlir::PassRegistration<TestTacticsDriver>("test-tactics", "Run test tactics");
+void registerTacticsTestLinalgPass() {
+  mlir::PassRegistration<TestTacticsLinalgDriver>("test-tactics-linalg",
+                                                  "Run test tactics");
 }
 } // end namespace mlir

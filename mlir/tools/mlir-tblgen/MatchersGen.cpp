@@ -1,4 +1,5 @@
 #include "MatchersGen.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
 using namespace llvm;
@@ -8,6 +9,10 @@ using namespace lang;
 using mlir::tblgen::Operator;
 
 #define DEBUG_TYPE "mlir-tblgen-tactics"
+
+static llvm::cl::opt<bool> clEmitBlas("emit-blas",
+                                      llvm::cl::desc("directly emit blas call"),
+                                      llvm::cl::init(false));
 
 namespace llvm {
 using identifierLine = std::pair<StringRef, unsigned>;
@@ -24,7 +29,7 @@ thread_local SymbolTableMap BuilderEmitter::symbolTable_;
 BuilderEmitter::BuilderEmitter(Record *record, raw_ostream &os)
     : record_(record), os(os){};
 
-void BuilderEmitter::emitMatmulHelpers() {
+SmallVector<std::string, 3> BuilderEmitter::getMatmulOperand() {
   auto recordInput = record_->getValueAsDef("inputs");
   auto inputs = recordInput->getValueAsListOfStrings("inputs");
 
@@ -32,36 +37,51 @@ void BuilderEmitter::emitMatmulHelpers() {
   auto outputs = recordOut->getValueAsListOfStrings("outputs");
 
   assert((outputs.size() == 1) && "expect single output for matmul");
-  assert((inputs.size() > 1) && (inputs.size() < 4) &&
-         "expect 2 or 3 inputs for matmul");
+  assert((inputs.size() > 1) && (inputs.size() < 3) &&
+         "expect 2 inputs for matmul");
 
-  std::vector<std::string> lookupInputs;
+  SmallVector<std::string, 3> lookupOperands;
   for (const auto &input : inputs)
-    lookupInputs.push_back(symbolTable_.lookup(input.str()));
-  std::string lookupOutput = symbolTable_.lookup(outputs[0].str());
+    lookupOperands.push_back(symbolTable_.lookup(input.str()));
+  lookupOperands.push_back(symbolTable_.lookup(outputs[0].str()));
+  return lookupOperands;
+}
 
-  // if inputs = 3, check that the output is also found as input.
-  if (lookupInputs.size() == 3) {
-    auto iterator =
-        std::find(lookupInputs.begin(), lookupInputs.end(), lookupOutput);
-    if (iterator == lookupInputs.end())
-      assert(0 && "expect output to be found among the inputs");
-    else
-      lookupInputs.erase(iterator);
-  }
-
+void BuilderEmitter::emitMatmulHelpers() {
+  auto lookupOperands = getMatmulOperand();
   os << formatv(
       R"(
     auto getOperandFromParamsMatmul = [&]() {
         llvm::SmallVector<mlir::Value, 3> res = { {0}, {1}, {2} };
         return res;
     };)",
-      lookupOutput, lookupInputs[0], lookupInputs[1]);
+      lookupOperands[2], lookupOperands[1], lookupOperands[0]);
+}
+
+// TODO: check how to properly escape { and }
+// https://llvm.org/doxygen/FormatVariadic_8h_source.html
+// mlir::Type{{} does not make a lot of sense.
+void BuilderEmitter::emitMatmulBlas() {
+  auto lookupOperands = getMatmulOperand();
+  os << formatv(
+      R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+    auto fn = composeFunctionCallName(FUNCTION::MATMUL,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
+    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
+    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
+      llvm::ArrayRef<mlir::Value>{ {0}, {1}, {2} }); 
+    )",
+      lookupOperands[2], lookupOperands[1], lookupOperands[0]);
 }
 
 void BuilderEmitter::emitMatmul() {
-  emitMatmulHelpers();
-  os << record_->getValueAsString("body");
+  if (!clEmitBlas) {
+    emitMatmulHelpers();
+    os << record_->getValueAsString("body");
+  } else
+    emitMatmulBlas();
 }
 
 std::string BuilderEmitter::emitTransposeHelpers() {
@@ -524,9 +544,16 @@ static void emitMatchersRewriters(const RecordKeeper &records,
   os << "}\n";
 }
 
-static mlir::GenRegistration genMatchers("gen-tactics-defs", "Generate tactics",
-                                         [](const RecordKeeper &records,
-                                            raw_ostream &os) {
-                                           emitMatchersRewriters(records, os);
-                                           return false;
-                                         });
+static mlir::GenRegistration
+    genMatchersLinalg("gen-tactics-linalg", "Generate tactics for linalg",
+                      [](const RecordKeeper &records, raw_ostream &os) {
+                        emitMatchersRewriters(records, os);
+                        return false;
+                      });
+static mlir::GenRegistration
+    genMatchersBlas("gen-tactics-blas", "Generate tactics for blas calls",
+                    [](const RecordKeeper &records, raw_ostream &os) {
+                      clEmitBlas = true;
+                      emitMatchersRewriters(records, os);
+                      return false;
+                    });

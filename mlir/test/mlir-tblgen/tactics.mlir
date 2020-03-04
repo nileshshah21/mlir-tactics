@@ -1,4 +1,4 @@
-// RUN: mlir-opt -test-tactics --debug %s | FileCheck %s
+// RUN: mlir-opt -test-tactics-linalg --debug %s | FileCheck %s
 
 func @gemmT(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>) {
   // CHECK: linalg.transpose
