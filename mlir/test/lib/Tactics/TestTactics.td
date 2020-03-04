@@ -52,11 +52,7 @@ class permutationBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Buil
     using namespace mlir::edsc;
     using namespace mlir::edsc::ops;
     using namespace mlir::edsc::intrinsics;
-    auto permutationMap = mlir::AffineMap::getPermutationMap(
-      getPermutationMapFromParamsPermute(), rewriter.getContext());
-    auto permute = rewriter.create<mlir::linalg::TransposeOp>(
-      op.getLoc(), getOperandFromParamsPermute(), mlir::AffineMapAttr::get(permutationMap));
-    
+        
   }];
   // input params.
   let inputs = ins;
@@ -87,6 +83,12 @@ def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
 
 def liftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
   matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
+  eraseOpBuilder
+]>;
+
+def transposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
+  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
+  matmulBuilder<Inputs<["D", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
