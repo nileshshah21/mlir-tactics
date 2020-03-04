@@ -23,6 +23,37 @@ enum class FUNCTION {
 };
 
 std::string
+composeFunctionNameForTranspose(const llvm::ArrayRef<mlir::Type> &types) {
+  std::string result = "Transpose_";
+  auto TShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
+  for (size_t i = 0; i < TShape.size() - 1; i++)
+    result += std::to_string(TShape[i]) + "x";
+  result += std::to_string(TShape[TShape.size() - 1]);
+  return result;
+}
+
+llvm::SmallVector<int64_t, 8>
+applyPermutation(llvm::ArrayRef<int64_t> shape,
+                 llvm::ArrayRef<int64_t> permutation) {
+  assert((shape.size() == permutation.size()) && "must be equal");
+  llvm::SmallVector<int64_t, 8> result{};
+  for (size_t i = 0; i < shape.size(); i++) {
+    result.push_back(shape[permutation[i]]);
+  }
+  return result;
+}
+
+// FIXME: take the type from the original memref.
+mlir::MemRefType getTransposedMemref(mlir::MemRefType source,
+                                     llvm::ArrayRef<int64_t> permutation,
+                                     mlir::Type t) {
+  auto sourceMemRefShape = source.getShape();
+  auto res = mlir::MemRefType::get(
+      applyPermutation(sourceMemRefShape, permutation), t, {}, 0);
+  return res;
+}
+
+std::string
 composeFunctionNameForMatmul(const llvm::ArrayRef<mlir::Type> &types) {
   if (types.size() != 3)
     llvm_unreachable("expect 3 memref");
@@ -43,8 +74,9 @@ std::string composeFunctionCallName(FUNCTION id, const Args... args) {
   case FUNCTION::RESHAPE:
     return "nullptr";
   case FUNCTION::TRANSPOSE:
-    return "nullptr";
+    return composeFunctionNameForTranspose(types);
   }
+  assert(0 && "case not convered");
   return "nullptr";
 }
 

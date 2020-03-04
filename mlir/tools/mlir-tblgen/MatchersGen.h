@@ -42,14 +42,22 @@ private:
   llvm::Record *record_;
   llvm::raw_ostream &os;
 
+  // get field with id "id". In the long run
+  // if the classes in tablegen get more complicated
+  // we can have simple wrapper around them.
+  std::vector<StringRef> getField(StringRef id);
+
   // matmul builders/helpers.
   void emitMatmul();
   void emitMatmulHelpers();
   SmallVector<std::string, 3> getMatmulOperand();
   void emitMatmulBlas();
 
-  std::string emitTranspose();
-  std::string emitTransposeHelpers();
+  // transpose builders/helpers
+  void emitTranspose(std::string emittedVar);
+  void emitTransposeHelpers();
+  std::string getTransposeOperand();
+  void emitTransposeBlas(std::string emittedVar);
 
   void emitErase();
 

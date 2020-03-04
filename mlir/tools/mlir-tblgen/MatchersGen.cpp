@@ -29,12 +29,18 @@ thread_local SymbolTableMap BuilderEmitter::symbolTable_;
 BuilderEmitter::BuilderEmitter(Record *record, raw_ostream &os)
     : record_(record), os(os){};
 
-SmallVector<std::string, 3> BuilderEmitter::getMatmulOperand() {
-  auto recordInput = record_->getValueAsDef("inputs");
-  auto inputs = recordInput->getValueAsListOfStrings("inputs");
+std::vector<StringRef> BuilderEmitter::getField(StringRef id) {
+  auto record = record_->getValueAsDef(id);
+  if (id.equals("affineExpr")) {
+    std::vector<StringRef> res = {record->getValueAsString(id)};
+    return res;
+  }
+  return record->getValueAsListOfStrings(id);
+}
 
-  auto recordOut = record_->getValueAsDef("outputs");
-  auto outputs = recordOut->getValueAsListOfStrings("outputs");
+SmallVector<std::string, 3> BuilderEmitter::getMatmulOperand() {
+  auto inputs = getField("inputs");
+  auto outputs = getField("outputs");
 
   assert((outputs.size() == 1) && "expect single output for matmul");
   assert((inputs.size() > 1) && (inputs.size() < 3) &&
@@ -84,18 +90,11 @@ void BuilderEmitter::emitMatmul() {
     emitMatmulBlas();
 }
 
-std::string BuilderEmitter::emitTransposeHelpers() {
-  auto recordInput = record_->getValueAsDef("inputs");
-  auto inputs = recordInput->getValueAsListOfStrings("inputs");
+void BuilderEmitter::emitTransposeHelpers() {
+  auto inputs = getField("inputs");
+  auto affineExpr = getField("affineExpr");
 
-  auto recordOut = record_->getValueAsDef("outputs");
-  auto outputs = recordOut->getValueAsListOfStrings("outputs");
-
-  // maybe introduce some handy classes to operate on tablegen classes.
-  auto affineExpr =
-      record_->getValueAsDef("affineExpr")->getValueAsString("affineExpr");
-
-  assert((outputs.size() == 1) && "expect single output for transpose");
+  assert((affineExpr.size() == 1) && "expect single affine expr for transpose");
   assert((inputs.size() == 1) && "expect single input for transpose");
 
   std::string lookupInput = symbolTable_.lookup(inputs[0].str());
@@ -112,15 +111,52 @@ std::string BuilderEmitter::emitTransposeHelpers() {
     auto getPermutationMapFromParamsPermute = []() {
       return llvm::ArrayRef<unsigned>({0});
     };)",
-      affineExpr);
-
-  return outputs[0].str();
+      affineExpr[0]);
 }
 
-std::string BuilderEmitter::emitTranspose() {
-  auto resTranspose = emitTransposeHelpers();
-  os << record_->getValueAsString("body");
-  return resTranspose;
+std::string BuilderEmitter::getTransposeOperand() {
+  auto inputs = getField("inputs");
+  assert((inputs.size() == 1) && "expect single input for transpose");
+  return symbolTable_.lookup(inputs[0].str());
+}
+
+void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
+  auto lookupOperands = getTransposeOperand();
+  auto permutations = getField("affineExpr");
+  assert((permutations.size()) == 1 &&
+         "expect single permutation for transpose");
+  auto permutation = permutations[0];
+  os << formatv(
+      R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+    auto f32Type = mlir::FloatType::getF32(module.getContext());
+    auto tType = getTransposedMemref(
+      {0}.getType().dyn_cast<mlir::MemRefType>(), {1}, f32Type);
+    {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
+    auto fn = composeFunctionCallName(FUNCTION::TRANSPOSE,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType });
+    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType });
+    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
+      llvm::ArrayRef<mlir::Value>{ {0}, {2} });
+  )",
+      lookupOperands[0], permutation, emittedVar);
+}
+
+void BuilderEmitter::emitTranspose(std::string emittedVar) {
+  if (!clEmitBlas) {
+    emitTransposeHelpers();
+    os << record_->getValueAsString("body");
+    os << formatv(
+        R"(
+    auto permutationMap = mlir::AffineMap::getPermutationMap(
+      getPermutationMapFromParamsPermute(), rewriter.getContext());
+    {0} = rewriter.create<mlir::linalg::TransposeOp>(
+      op.getLoc(), getOperandFromParamsPermute(), mlir::AffineMapAttr::get(permutationMap));
+    )",
+        emittedVar);
+  } else
+    emitTransposeBlas(emittedVar);
 }
 
 void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
@@ -144,13 +180,13 @@ void BuilderEmitter::emit() {
                  << "\n";
     os.indent(4) << "{ // start scope permute"
                  << "\n";
-    auto resPermute = emitTranspose();
+    emitTranspose(emittedVar);
     os << "\n";
-    os.indent(4) << emittedVar << " = permute; "
-                 << "\n";
-    os.indent(4) << "} // end scope matmul"
+    os.indent(4) << "} // end scope permute"
                  << "\n\n";
-    symbolTable_.updateOrInsert(resPermute, emittedVar);
+    auto output = getField("outputs");
+    assert((output.size() == 1) && "transpose expect single output");
+    symbolTable_.updateOrInsert(output[0].str(), emittedVar);
     return;
   }
   if (builderName.equals("erase")) {
