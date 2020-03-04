@@ -56,4 +56,4 @@ _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
     StridedMemRefType<float, 2> *A, StridedMemRefType<float, 2> *B,
     StridedMemRefType<float, 2> *C);
 
-#endif // MLIR_CPU_RUNNER_MLIR_TEST_CBLAS_INTERFACE_H_
+#endif // MLIR_CPU_RUNNER_CBLAS_INTERFACE_H_
