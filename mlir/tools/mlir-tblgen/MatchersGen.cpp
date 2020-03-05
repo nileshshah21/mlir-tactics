@@ -120,8 +120,10 @@ std::string BuilderEmitter::getTransposeOperand() {
   return symbolTable_.lookup(inputs[0].str());
 }
 
+// FIXME: get the type from the memref and don't assume a
+// f32.
 void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
-  auto lookupOperands = getTransposeOperand();
+  auto lookupOperand = getTransposeOperand();
   auto permutations = getField("affineExpr");
   assert((permutations.size()) == 1 &&
          "expect single permutation for transpose");
@@ -140,7 +142,7 @@ void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {2} });
   )",
-      lookupOperands[0], permutation, emittedVar);
+      lookupOperand, permutation, emittedVar);
 }
 
 void BuilderEmitter::emitTranspose(std::string emittedVar) {
@@ -159,8 +161,67 @@ void BuilderEmitter::emitTranspose(std::string emittedVar) {
     emitTransposeBlas(emittedVar);
 }
 
+// FIXME: duplicate code with getTransposeOperand.
+std::string BuilderEmitter::getReshapeOperand() {
+  auto inputs = getField("inputs");
+  assert((inputs.size() == 1) && "expect single input for transpose");
+  return symbolTable_.lookup(inputs[0].str());
+}
+
+// FIXME: duplicate code. The formatv expression is similar to
+// emitTransposeBlas.
+// FIXME: same fixme for the f32 type.
+void BuilderEmitter::emitReshapeBlas(std::string emittedVar) {
+  auto lookupOperand = getReshapeOperand();
+  auto indexMaps = getField("affineExpr");
+  auto outputReshape = getField("outputs");
+  assert(outputReshape.size() == 1);
+  assert((indexMaps.size()) == 1 &&
+         "expect single indexes position map for reshape");
+  auto indexMap = indexMaps[0];
+
+  if (indexMap.equals("output_already_defined")) {
+    os << formatv(
+        R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+    auto tType = {0}.getType().dyn_cast<mlir::MemRefType>();
+    auto fn = composeFunctionCallName(FUNCTION::RESHAPE,
+      llvm::ArrayRef<mlir::Type>{ {1}.getType(), tType});
+    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{ {1}.getType(), tType});
+    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
+      llvm::ArrayRef<mlir::Value>{ {1}, {0} });
+    )",
+        outputReshape[0], lookupOperand);
+  } else {
+    os << formatv(
+        R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+    auto f32Type = mlir::FloatType::getF32(module.getContext());
+    auto tType = getReshapedMemRef(
+      {0}.getType().dyn_cast<mlir::MemRefType>(), {1}, f32Type);
+    {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
+    auto fn = composeFunctionCallName(FUNCTION::RESHAPE,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType});
+    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType});
+    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
+      llvm::ArrayRef<mlir::Value>{ {0}, {2} });
+  )",
+        lookupOperand, indexMap, emittedVar);
+  }
+}
+
+void BuilderEmitter::emitReshape(std::string emittedVar) {
+  if (!clEmitBlas)
+    os << "assert(0);\n";
+  else
+    emitReshapeBlas(emittedVar);
+}
+
 void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
 
+// TODO: remove duplicate code.
 void BuilderEmitter::emit() {
   auto builderName = record_->getValueAsString("name");
   LLVM_DEBUG(dbgs() << "emitting ---> " << builderName << "\n");
@@ -187,6 +248,21 @@ void BuilderEmitter::emit() {
     auto output = getField("outputs");
     assert((output.size() == 1) && "transpose expect single output");
     symbolTable_.updateOrInsert(output[0].str(), emittedVar);
+    return;
+  }
+  if (builderName.equals("reshape")) {
+    auto emittedVar = symbolTable_.getNextVariable();
+    os.indent(4) << "mlir::Value " << emittedVar << ";"
+                 << "\n";
+    os.indent(4) << "{ // start scop reshape"
+                 << "\n";
+    emitReshape(emittedVar);
+    os << "\n";
+    os.indent(4) << "} // end scop reshape"
+                 << "\n\n";
+    auto outputs = getField("outputs");
+    assert((outputs.size() == 1) && "reshape exepect single output");
+    symbolTable_.updateOrInsert(outputs[0].str(), emittedVar);
     return;
   }
   if (builderName.equals("erase")) {

@@ -53,11 +53,16 @@ private:
   SmallVector<std::string, 3> getMatmulOperand();
   void emitMatmulBlas();
 
-  // transpose builders/helpers
+  // transpose builders/helpers.
   void emitTranspose(std::string emittedVar);
   void emitTransposeHelpers();
   std::string getTransposeOperand();
   void emitTransposeBlas(std::string emittedVar);
+
+  // reshape builders/helpers.
+  void emitReshape(std::string emittedVar);
+  void emitReshapeBlas(std::string emittedVar);
+  std::string getReshapeOperand();
 
   void emitErase();
 
