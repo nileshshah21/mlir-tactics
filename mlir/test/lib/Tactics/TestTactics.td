@@ -58,7 +58,20 @@ class permutationBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Buil
   let inputs = ins;
   // output params.
   let outputs = outs;
-  // affine exprs.  
+  // affine expr.  
+  AffineExpression affineExpr = expr;
+}
+
+class reshapeBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Builder {
+  // name.
+  let name = "reshape";
+  // body 
+  let body = [{}];
+  // input params.
+  let inputs = ins;
+  // output params.
+  let outputs = outs;
+  // affine expr.
   AffineExpression affineExpr = expr;
 }
 
@@ -81,18 +94,21 @@ def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
   eraseOpBuilder
 ]>;
 
+def testTransposeTensor : Tactics<"C(i, j, k) += A(i, l) * B(j, l, k)", [
+  permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{1, 2}">>,
+  matmulBuilder<Inputs<["A", "E"]>, Outputs<["F"]>>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"output_already_defined">>,
+  eraseOpBuilder
+]>;
+
 def liftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
   matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
 def transposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
-  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
-  matmulBuilder<Inputs<["D", "B"]>, Outputs<["C"]>>,
-  eraseOpBuilder
-]>;
-
-def transposeAndLiftToMatmulTactic  : Tactics<"C(i,j) = A(k,i) * B(k,j)", [
   permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
   matmulBuilder<Inputs<["D", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
