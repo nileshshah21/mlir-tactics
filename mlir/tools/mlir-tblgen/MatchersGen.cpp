@@ -235,48 +235,84 @@ void BuilderEmitter::emitReshape(std::string emittedVar) {
 
 void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
 
-// TODO: remove duplicate code.
+// The preamble looks like:
+//  ```
+//  mir::Value emittedVar
+//  { // scope builder name
+//  ```
+// emittedVar is emitted only if the output
+// is not already available in the symbol table.
+// We also insert the new variable in the symbol table and
+// bind it with the output.
+void BuilderEmitter::emitPreamble() {
+  // get new variable name if output not defined yet.
+  auto outputs = getField("outputs");
+  assert((outputs.size() == 1) && "expect single output");
+  auto isAlreadyDefined = symbolTable_.lookup(outputs[0].str());
+  if (!isAlreadyDefined) {
+    auto emittedVar = symbolTable_.getNextVariable();
+    symbolTable_.updateOrInsert(outputs[0].str(), emittedVar);
+    os << formatv(
+        R"(
+    mlir::Value {0};
+    )",
+        emittedVar);
+  }
+  os << formatv(
+      R"(
+    { // start scope {0}
+  )",
+      record_->getValueAsString("name"));
+  os << "\n";
+}
+
+// The postamble looks like:
+//
+// ```
+// } // scope builder name
+// ```
+void BuilderEmitter::emitPostamble() {
+  os << "\n";
+  os << formatv(
+      R"(
+    } // end scope {0}
+  )",
+      record_->getValueAsString("name"));
+  os << "\n\n";
+}
+
 void BuilderEmitter::emit() {
   auto builderName = record_->getValueAsString("name");
   LLVM_DEBUG(dbgs() << "emitting ---> " << builderName << "\n");
 
   if (builderName.equals("matmul")) {
-    os.indent(4) << "{ // start scope matmul"
-                 << "\n";
+    emitPreamble();
     emitMatmul();
-    os << "\n";
-    os.indent(4) << "} // end scope matmul"
-                 << "\n\n";
+    emitPostamble();
     return;
   }
   if (builderName.equals("permute")) {
-    auto emittedVar = symbolTable_.getNextVariable();
-    os.indent(4) << "mlir::Value " << emittedVar << ";"
-                 << "\n";
-    os.indent(4) << "{ // start scope permute"
-                 << "\n";
-    emitTranspose(emittedVar);
-    os << "\n";
-    os.indent(4) << "} // end scope permute"
-                 << "\n\n";
-    auto output = getField("outputs");
-    assert((output.size() == 1) && "transpose expect single output");
-    symbolTable_.updateOrInsert(output[0].str(), emittedVar);
+    auto outputs = getField("outputs");
+    assert((outputs.size() == 1) && "reshape exepect single output");
+    emitPreamble();
+    // note that emitPreamble can emit, a new variable
+    // and update the symbol table.
+    std::string lookupOutput;
+    symbolTable_.lookup(outputs[0].str(), lookupOutput);
+    emitTranspose(lookupOutput);
+    emitPostamble();
     return;
   }
   if (builderName.equals("reshape")) {
-    auto emittedVar = symbolTable_.getNextVariable();
-    os.indent(4) << "mlir::Value " << emittedVar << ";"
-                 << "\n";
-    os.indent(4) << "{ // start scop reshape"
-                 << "\n";
-    emitReshape(emittedVar);
-    os << "\n";
-    os.indent(4) << "} // end scop reshape"
-                 << "\n\n";
     auto outputs = getField("outputs");
     assert((outputs.size() == 1) && "reshape exepect single output");
-    symbolTable_.updateOrInsert(outputs[0].str(), emittedVar);
+    emitPreamble();
+    // note that emitPreamble can emit, a new variable
+    // and update the symbol table.
+    std::string lookupOutput;
+    symbolTable_.lookup(outputs[0].str(), lookupOutput);
+    emitReshape(lookupOutput);
+    emitPostamble();
     return;
   }
   if (builderName.equals("erase")) {
