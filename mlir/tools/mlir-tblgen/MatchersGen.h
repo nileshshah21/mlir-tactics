@@ -48,6 +48,9 @@ private:
   // we can have simple wrapper around them.
   std::vector<StringRef> getField(StringRef id);
 
+  void emitPreamble();
+  void emitPostamble();
+
   // matmul builders/helpers.
   void emitMatmul();
   void emitMatmulHelpers();
