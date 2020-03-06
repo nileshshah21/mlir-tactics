@@ -47,13 +47,12 @@ applyPermutation(llvm::ArrayRef<int64_t> shape,
   return result;
 }
 
-// FIXME: take the type from the original memref.
 mlir::MemRefType getTransposedMemref(mlir::MemRefType source,
-                                     llvm::ArrayRef<int64_t> permutation,
-                                     mlir::Type t) {
+                                     llvm::ArrayRef<int64_t> permutation) {
   auto sourceMemRefShape = source.getShape();
-  auto res = mlir::MemRefType::get(
-      applyPermutation(sourceMemRefShape, permutation), t, {}, 0);
+  auto res =
+      mlir::MemRefType::get(applyPermutation(sourceMemRefShape, permutation),
+                            source.getElementType(), {}, 0);
   return res;
 }
 
@@ -91,13 +90,11 @@ llvm::SmallVector<int64_t, 8> applyIndexMap(llvm::ArrayRef<int64_t> shape,
   return result;
 }
 
-// FIXME: take the type from the original memref.
 mlir::MemRefType getReshapedMemRef(mlir::MemRefType source,
-                                   llvm::ArrayRef<int64_t> indexMap,
-                                   mlir::Type t) {
+                                   llvm::ArrayRef<int64_t> indexMap) {
   auto sourceMemRefShape = source.getShape();
   auto res = mlir::MemRefType::get(applyIndexMap(sourceMemRefShape, indexMap),
-                                   t, {}, 0);
+                                   source.getElementType(), {}, 0);
   return res;
 }
 
