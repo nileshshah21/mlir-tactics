@@ -131,8 +131,6 @@ std::string BuilderEmitter::getTransposeOperand() {
   return lookupInput;
 }
 
-// FIXME: get the type from the memref and don't assume a
-// f32.
 void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
   auto lookupOperand = getTransposeOperand();
   auto permutations = getField("affineExpr");
@@ -142,9 +140,8 @@ void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
   os << formatv(
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
-    auto f32Type = mlir::FloatType::getF32(module.getContext());
     auto tType = getTransposedMemref(
-      {0}.getType().dyn_cast<mlir::MemRefType>(), {1}, f32Type);
+      {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
     auto fn = composeFunctionCallName(FUNCTION::TRANSPOSE,
       llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType });
@@ -184,7 +181,6 @@ std::string BuilderEmitter::getReshapeOperand() {
 
 // FIXME: duplicate code. The formatv expression is similar to
 // emitTransposeBlas.
-// FIXME: same fixme for the f32 type.
 void BuilderEmitter::emitReshapeBlas(std::string emittedVar) {
   auto lookupOperand = getReshapeOperand();
   auto indexMaps = getField("affineExpr");
@@ -211,9 +207,8 @@ void BuilderEmitter::emitReshapeBlas(std::string emittedVar) {
     os << formatv(
         R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
-    auto f32Type = mlir::FloatType::getF32(module.getContext());
     auto tType = getReshapedMemRef(
-      {0}.getType().dyn_cast<mlir::MemRefType>(), {1}, f32Type);
+      {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
     auto fn = composeFunctionCallName(FUNCTION::RESHAPE,
       llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType});
