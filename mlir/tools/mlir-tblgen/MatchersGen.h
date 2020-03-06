@@ -25,6 +25,7 @@ public:
   void insert(std::string key, std::string value);
   void updateOrInsert(std::string key, std::string value);
   bool lookup(std::string key, std::string &value) const;
+  bool lookup(std::string key) const;
   void clear();
   void dump() const;
 
