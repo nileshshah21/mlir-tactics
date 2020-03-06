@@ -322,6 +322,11 @@ bool SymbolTableMap::lookup(std::string key, std::string &value) const {
   return false;
 }
 
+bool SymbolTableMap::lookup(std::string key) const {
+  std::string dummyCapture;
+  return lookup(key, dummyCapture);
+}
+
 // Walk tree (see teckly).
 void walkTree(const TreeRef &tree, std::function<void(const TreeRef &)> fn) {
   fn(tree);
