@@ -24,7 +24,7 @@ public:
   std::string getNextVariable();
   void insert(std::string key, std::string value);
   void updateOrInsert(std::string key, std::string value);
-  std::string lookup(std::string key) const;
+  bool lookup(std::string key, std::string &value) const;
   void clear();
   void dump() const;
 

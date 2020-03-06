@@ -47,9 +47,15 @@ SmallVector<std::string, 3> BuilderEmitter::getMatmulOperand() {
          "expect 2 inputs for matmul");
 
   SmallVector<std::string, 3> lookupOperands;
-  for (const auto &input : inputs)
-    lookupOperands.push_back(symbolTable_.lookup(input.str()));
-  lookupOperands.push_back(symbolTable_.lookup(outputs[0].str()));
+  std::string lookupName;
+  for (const auto &input : inputs) {
+    if (!symbolTable_.lookup(input.str(), lookupName))
+      llvm_unreachable("cannot find symbol");
+    lookupOperands.push_back(lookupName);
+  }
+  if (!symbolTable_.lookup(outputs[0].str(), lookupName))
+    llvm_unreachable("cannot find symbol");
+  lookupOperands.push_back(lookupName);
   return lookupOperands;
 }
 
@@ -97,7 +103,9 @@ void BuilderEmitter::emitTransposeHelpers() {
   assert((affineExpr.size() == 1) && "expect single affine expr for transpose");
   assert((inputs.size() == 1) && "expect single input for transpose");
 
-  std::string lookupInput = symbolTable_.lookup(inputs[0].str());
+  std::string lookupInput;
+  if (!symbolTable_.lookup(inputs[0].str(), lookupInput))
+    llvm_unreachable("cannot find symbol");
 
   os << formatv(
       R"(
@@ -117,7 +125,10 @@ void BuilderEmitter::emitTransposeHelpers() {
 std::string BuilderEmitter::getTransposeOperand() {
   auto inputs = getField("inputs");
   assert((inputs.size() == 1) && "expect single input for transpose");
-  return symbolTable_.lookup(inputs[0].str());
+  std::string lookupInput;
+  if (!symbolTable_.lookup(inputs[0].str(), lookupInput))
+    llvm_unreachable("cannot find symbol");
+  return lookupInput;
 }
 
 // FIXME: get the type from the memref and don't assume a
@@ -165,7 +176,10 @@ void BuilderEmitter::emitTranspose(std::string emittedVar) {
 std::string BuilderEmitter::getReshapeOperand() {
   auto inputs = getField("inputs");
   assert((inputs.size() == 1) && "expect single input for transpose");
-  return symbolTable_.lookup(inputs[0].str());
+  std::string lookupInput;
+  if (!symbolTable_.lookup(inputs[0].str(), lookupInput))
+    llvm_unreachable("cannot find symbol");
+  return lookupInput;
 }
 
 // FIXME: duplicate code. The formatv expression is similar to
@@ -299,14 +313,13 @@ void SymbolTableMap::insert(std::string key, std::string value) {
   symbolTable_.insert(std::make_pair(key, value));
 }
 
-std::string SymbolTableMap::lookup(std::string key) const {
+bool SymbolTableMap::lookup(std::string key, std::string &value) const {
   auto it = symbolTable_.find(key);
-  if (it != symbolTable_.end())
-    return it->second;
-  LLVM_DEBUG(dbgs() << "key: " << key << "\n");
-  dump();
-  assert(0 && "expect value to be found");
-  return "nullptr";
+  if (it != symbolTable_.end()) {
+    value = it->second;
+    return true;
+  }
+  return false;
 }
 
 // Walk tree (see teckly).
@@ -371,7 +384,10 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t) {
   case TK_APPLY: {
     auto tc = Apply(t);
     auto tcName = Ident(tc.name());
-    os << symbolTable_.lookup(tcName.name());
+    std::string lookupName;
+    if (!symbolTable_.lookup(tcName.name(), lookupName))
+      llvm_unreachable("cannot find symbol");
+    os << lookupName;
     return;
   }
   case TK_IDENT: {
@@ -389,8 +405,11 @@ void TacticsEmitter::emitArithOperationMatcher(
   auto rootOperation = assignment;
   switch (assignment->kind()) {
   case TK_PLUS_EQ: {
-    os << "m_Op<mlir::AddFOp>("
-       << symbolTable_.lookup(comprehension.ident().name()) << ", ";
+    os << "m_Op<mlir::AddFOp>(";
+    std::string lookupName;
+    if (!symbolTable_.lookup(comprehension.ident().name(), lookupName))
+      llvm_unreachable("cannot find symbol");
+    os << lookupName << ", ";
     emitArithOperationMatcher(comprehension.rhs());
     os << ");";
     break;
