@@ -103,6 +103,14 @@ def testTTGTabcadbdc : Tactics<"C(i, j, k) += A(i, l) * B(j, l, k)", [
   eraseOpBuilder
 ]>;
 
+def testTTGTabacddbc : Tactics<"C(i, j) += A(i, k, l) * B(l, j, k)", [
+  permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
+  reshapeBuilder<Inputs<["A"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
+  matmulBuilder<Inputs<["E", "F"]>, Outputs<["C"]>>,
+  eraseOpBuilder
+]>;
+
 def testliftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
   matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder

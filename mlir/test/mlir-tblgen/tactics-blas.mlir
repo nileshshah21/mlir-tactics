@@ -1,4 +1,4 @@
-// RUN: mlir-opt -test-tactics-blas --debug %s | FileCheck %s
+// RUN: mlir-opt -disable-pass-threading=true -test-tactics-blas --debug %s | FileCheck %s
 
 func @gemm(%A: memref<42x42xf32>, %B: memref<42x42xf32>, %C: memref<42x42xf32>) {
   // CHECK: @matmul_42x42x42
@@ -55,7 +55,7 @@ func @gemmTransposeA(%A: memref<3x5xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf3
   return
 }
 
-func @contraction(%A: memref<2x5xf32>, %B: memref<3x5x4xf32>, %C: memref<2x3x4xf32>) {
+func @contraction.abc.ad.bdc(%A: memref<2x5xf32>, %B: memref<3x5x4xf32>, %C: memref<2x3x4xf32>) {
   // CHECK: alloc() : memref<5x3x4xf32>
   // CHECK-NEXT: llvm.mlir.addressof
   // CHECK-NEXT: llvm.mlir.constant
@@ -82,3 +82,30 @@ func @contraction(%A: memref<2x5xf32>, %B: memref<3x5x4xf32>, %C: memref<2x3x4xf
   }
   return
 }
+
+func @contraction.ab.acd.dbc(%A : memref<2x4x5xf32>, %B : memref<5x3x4xf32>, %C : memref<2x3xf32>) {
+  // CHECK: alloc() : memref<4x5x3xf32>
+  // CHECK-NEXT: llvm.mlir.addressof
+  // CHECK-NEXT: llvm.mlir.constant
+  // CHECK-NEXT: @transpose_5x3x4_to_4x5x3
+  // CHECK-NEXT: alloc() : memref<2x20xf32>
+  // CHECK-NEXT: @reshape_2x4x5_to_2x20
+  // CHECK-NEXT: alloc() : memref<20x3xf32>
+  // CHECK-NEXT: @reshape_4x5x3_to_20x3
+  // CHECK-NEXT: @matmul_2x3x20
+  affine.for %i = 0 to 2 {
+    affine.for %j = 0 to 3 {
+      affine.for %k = 0 to 4 {
+        affine.for %l = 0 to 5 {
+          %0 = affine.load %A[%i, %k, %l] : memref<2x4x5xf32> 
+          %1 = affine.load %B[%l, %j, %k] : memref<5x3x4xf32> 
+          %2 = affine.load %C[%i, %j] : memref<2x3xf32>
+          %3 = mulf %0, %1 : f32
+          %4 = addf %2, %3 : f32
+          affine.store %4, %C[%i, %j] : memref<2x3xf32>
+        }
+      }
+    }
+  }
+  return 
+} 
