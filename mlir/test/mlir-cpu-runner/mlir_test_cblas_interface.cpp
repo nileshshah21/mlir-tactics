@@ -16,6 +16,7 @@
 #include <iostream>
 
 #include "dnnl.hpp"
+using namespace dnnl;
 
 extern "C" void
 _mlir_ciface_linalg_fill_viewf32_f32(StridedMemRefType<float, 0> *X, float f) {
@@ -35,6 +36,16 @@ _mlir_ciface_linalg_fill_viewsxsxf32_f32(StridedMemRefType<float, 2> *X,
   for (unsigned i = 0; i < X->sizes[0]; ++i)
     for (unsigned j = 0; j < X->sizes[1]; ++j)
       *(X->data + X->offset + i * X->strides[0] + j * X->strides[1]) = f;
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(StridedMemRefType<float, 3> *X,
+                                               float f) {
+  for (unsigned i = 0; i < X->sizes[0]; ++i)
+    for (unsigned j = 0; j < X->sizes[1]; ++j)
+      for (unsigned k = 0; k < X->sizes[2]; ++k)
+        *(X->data + X->offset + i * X->strides[0] + j * X->strides[1] +
+          k * X->strides[2]) = f;
 }
 
 extern "C" void
@@ -109,9 +120,8 @@ extern "C" void _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
       B->strides[0], 1.0f, C->data + C->offset, C->strides[0]);
 }
 
-extern "C" void _mlir_ciface_Matmul_42x42x42(StridedMemRefType<float, 2> *C,
-                                             StridedMemRefType<float, 2> *B,
-                                             StridedMemRefType<float, 2> *A) {
+void Matmul(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *B,
+            StridedMemRefType<float, 2> *A) {
   if (A->strides[1] != B->strides[1] || A->strides[1] != C->strides[1] ||
       A->strides[1] != 1 || A->sizes[0] < A->strides[1] ||
       B->sizes[0] < B->strides[1] || C->sizes[0] < C->strides[1] ||
@@ -143,8 +153,141 @@ extern "C" void _mlir_ciface_Matmul_42x42x42(StridedMemRefType<float, 2> *C,
     assert(0 && "dnnl_sgemm failed");
 }
 
+// FIXME use the more conventional A, B and C.
+extern "C" void _mlir_ciface_Matmul_42x42x42(StridedMemRefType<float, 2> *C,
+                                             StridedMemRefType<float, 2> *B,
+                                             StridedMemRefType<float, 2> *A) {
+  Matmul(C, B, A);
+}
+
+extern "C" void _mlir_ciface_Matmul_2x12x5(StridedMemRefType<float, 2> *C,
+                                           StridedMemRefType<float, 2> *B,
+                                           StridedMemRefType<float, 2> *A) {
+  Matmul(C, B, A);
+}
+
 extern "C" void
 _mlir_ciface_linalg_fill_view42x42xf32_f32(StridedMemRefType<float, 2> *X,
                                            float f) {
   _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view3x5x4xf32_f32(StridedMemRefType<float, 3> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view2x3x4xf32_f32(StridedMemRefType<float, 3> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view2x5xf32_f32(StridedMemRefType<float, 2> *X,
+                                         float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+inline memory::dims shapeToMklDnnDims(const StridedMemRefType<float, 3> *T) {
+  memory::dims dims(3);
+  for (int d = 0; d < 3; ++d) {
+    dims[d] = T->sizes[d];
+  }
+  return dims;
+}
+
+inline memory::dims calculateStrides(const memory::dims &dimsOrder) {
+  memory::dims strides(dimsOrder.size());
+  int lastDimIdx = dimsOrder.size() - 1;
+  strides[lastDimIdx] = 1;
+  for (int d = lastDimIdx - 1; d >= 0; d--) {
+    strides[d] = strides[d + 1] * dimsOrder[d + 1];
+  }
+  return strides;
+}
+
+inline memory::dims reorderStrides(const memory::dims &strides,
+                                   std::vector<int> perm) {
+  memory::dims reordered_strides;
+  reordered_strides.resize(strides.size());
+  for (size_t i = 0; i < strides.size(); ++i) {
+    reordered_strides[perm[i]] = strides[i];
+  }
+  return reordered_strides;
+}
+
+void createBlockedMemDescHelper(const memory::dims &dims,
+                                const memory::dims &strides,
+                                dnnl_memory_desc_t *blocked_md) {
+  const int k_num_dims = dims.size();
+  dnnl_dim_t input_dims[k_num_dims];
+  dnnl_dim_t input_strides[k_num_dims];
+  for (int i = 0; i < k_num_dims; ++i) {
+    input_dims[i] = dims[i];
+    input_strides[i] = strides[i];
+  }
+  dnnl_memory_desc_init_by_strides(blocked_md, k_num_dims, input_dims, dnnl_f32,
+                                   input_strides);
+}
+
+inline memory::desc getMemDescr(const memory::dims &dims,
+                                const memory::dims &strides) {
+  dnnl_memory_desc_t blocked_md;
+  createBlockedMemDescHelper(dims, strides, &blocked_md);
+  return memory::desc(blocked_md);
+}
+
+extern "C" void _mlir_ciface_Transpose_3x5x4(StridedMemRefType<float, 3> *S,
+                                             StridedMemRefType<float, 3> *D,
+                                             int *perm, int s) {
+  std::cout << "\nSource -> \n";
+  printMemRefMetaData(std::cerr, *S);
+  std::cout << "\nDest -> \n";
+  printMemRefMetaData(std::cerr, *D);
+  std::cout << "\n\n";
+
+  std::vector<int> arrayPerm{};
+  for (int i = 0; i < s; i++)
+    arrayPerm.push_back(*(perm++));
+
+  std::cout << "\nPermutation -> \n";
+  for (const auto elem : arrayPerm)
+    std::cout << elem << "\n";
+
+  auto cpu_engine = engine(engine::kind::cpu, 0);
+  memory::dims in_dims = shapeToMklDnnDims(S);
+  memory::dims out_dims = shapeToMklDnnDims(D);
+  memory::dims in_strides = calculateStrides(in_dims);
+  memory::dims out_strides =
+      reorderStrides(calculateStrides(out_dims), arrayPerm);
+  auto inputMemDescr = getMemDescr(in_dims, in_strides);
+  auto outputMemDescr = getMemDescr(in_dims, out_strides);
+  auto inputMemory = memory(inputMemDescr, cpu_engine, S->data + S->offset);
+  auto outputMemory = memory(outputMemDescr, cpu_engine, D->data + D->offset);
+  auto r1 = reorder(inputMemory, outputMemory);
+  auto stream_cpu = stream(cpu_engine);
+  r1.execute(stream_cpu, inputMemory, outputMemory);
+}
+
+extern "C" void
+_mlir_ciface_Reshape_2x3x4_to_2x12(StridedMemRefType<float, 3> *S,
+                                   StridedMemRefType<float, 2> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_Reshape_5x3x4_to_5x12(StridedMemRefType<float, 3> *S,
+                                   StridedMemRefType<float, 2> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_Reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
+                                   StridedMemRefType<float, 3> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * sizeof(float));
 }
