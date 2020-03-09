@@ -66,7 +66,7 @@ mlir::MemRefType getTransposedMemref(mlir::MemRefType source,
 // integer.
 // {1, 2} -> ok
 // {1, 1} not ok. (we cannot use std::is_sorted)
-int64_t areConsecutive(llvm::ArrayRef<int64_t> indexMap) {
+bool areConsecutive(llvm::ArrayRef<int64_t> indexMap) {
   bool isTrue = true;
   for (size_t i = 1; i < indexMap.size(); i++) {
     if (indexMap[i] != indexMap[i - 1] + 1) {
@@ -77,10 +77,27 @@ int64_t areConsecutive(llvm::ArrayRef<int64_t> indexMap) {
   return isTrue;
 }
 
+// get dimensions not involved in the reshape operation.
+llvm::SmallVector<int64_t, 8>
+getOtherDimensions(size_t numberOfDims, llvm::ArrayRef<int64_t> indexMap) {
+  assert(areConsecutive(indexMap) && "expect consecutive dimensions");
+  llvm::SmallVector<int64_t, 8> allIndexes;
+  // create array containing all indexes for each dimension.
+  // (i.e., for numberOfDims = 3 -> {0, 1, 2}
+  int64_t dim = 0;
+  for (size_t i = 0; i < numberOfDims; i++)
+    allIndexes.push_back(dim++);
+  // subtract to allIndexes
+  // the indexes of the dimensions to be reshaped.
+  llvm::SmallVector<int64_t, 8> difference{};
+  std::set_difference(allIndexes.begin(), allIndexes.end(), indexMap.begin(),
+                      indexMap.end(), std::back_inserter(difference));
+  return difference;
+}
+
 llvm::SmallVector<int64_t, 8> applyIndexMap(llvm::ArrayRef<int64_t> shape,
                                             llvm::ArrayRef<int64_t> indexMap) {
   assert((shape.size() > indexMap.size()) && "shape must be > than indexMap");
-  assert((indexMap[0] > 0) && "cannot applyMap to outermost dimension");
 
   llvm::SmallVector<int64_t, 8> result{};
   if (!areConsecutive(indexMap))
@@ -89,10 +106,25 @@ llvm::SmallVector<int64_t, 8> applyIndexMap(llvm::ArrayRef<int64_t> shape,
   for (size_t i = 0; i < indexMap.size(); i++) {
     newDim *= shape[indexMap[i]];
   }
-  for (int64_t i = 0; i < indexMap[0]; i++) {
-    result.push_back(shape[i]);
+  auto dimensionNotInIndexMap = getOtherDimensions(shape.size(), indexMap);
+
+  assert((dimensionNotInIndexMap.size() >= 1) && "expect at least one element");
+  assert((indexMap.size() >= 1) && "expect at least one element");
+
+  if (dimensionNotInIndexMap[0] < indexMap[0]) {
+    for (const auto dim : dimensionNotInIndexMap)
+      result.push_back(shape[dim]);
+    result.push_back(newDim);
+    return result;
   }
-  result.push_back(newDim);
+
+  if (dimensionNotInIndexMap[0] > indexMap[0]) {
+    result.push_back(newDim);
+    for (const auto dim : dimensionNotInIndexMap)
+      result.push_back(shape[dim]);
+    return result;
+  }
+  assert(0 && "dimensionNotInIndexMap and indexMap cannot have same element");
   return result;
 }
 
