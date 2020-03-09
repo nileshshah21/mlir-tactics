@@ -1,7 +1,7 @@
 // RUN: mlir-opt -test-tactics-blas --debug %s | FileCheck %s
 
 func @gemm(%A: memref<42x42xf32>, %B: memref<42x42xf32>, %C: memref<42x42xf32>) {
-  // CHECK: @Matmul_42x42x42
+  // CHECK: @matmul_42x42x42
   // CHECK-NEXT: return
   affine.for %i = 0 to 42 {
     affine.for %j = 0 to 42 {
@@ -19,7 +19,7 @@ func @gemm(%A: memref<42x42xf32>, %B: memref<42x42xf32>, %C: memref<42x42xf32>) 
 }
 
 func @gemmPosOperandTest(%A : memref<5x3xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf32>) {
-  // CHECK: @Matmul_5x6x3
+  // CHECK: @matmul_5x6x3
   // CHECK-NEXT: return
   affine.for %i = 0 to 5 {
     affine.for %j = 0 to 6 {
@@ -37,8 +37,8 @@ func @gemmPosOperandTest(%A : memref<5x3xf32>, %B: memref<3x6xf32>, %C: memref<5
 }
 
 func @gemmTransposeA(%A: memref<3x5xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf32>) {
-  // CHECK: @Transpose_3x5
-  // CHECK-NEXT: @Matmul_5x6x3
+  // CHECK: @transpose_3x5
+  // CHECK-NEXT: @matmul_5x6x3
   // CHECK-NEXT: return
   affine.for %i = 0 to 5 {
     affine.for %j = 0 to 6 {
