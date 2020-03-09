@@ -26,16 +26,20 @@ _mlir_ciface_linalg_fill_viewf32_f32(StridedMemRefType<float, 0> *X, float f) {
 extern "C" void
 _mlir_ciface_linalg_fill_viewsxf32_f32(StridedMemRefType<float, 1> *X,
                                        float f) {
-  for (unsigned i = 0; i < X->sizes[0]; ++i)
+  for (unsigned i = 0; i < X->sizes[0]; ++i) {
     *(X->data + X->offset + i * X->strides[0]) = f;
+    f++;
+  }
 }
 
 extern "C" void
 _mlir_ciface_linalg_fill_viewsxsxf32_f32(StridedMemRefType<float, 2> *X,
                                          float f) {
   for (unsigned i = 0; i < X->sizes[0]; ++i)
-    for (unsigned j = 0; j < X->sizes[1]; ++j)
+    for (unsigned j = 0; j < X->sizes[1]; ++j) {
       *(X->data + X->offset + i * X->strides[0] + j * X->strides[1]) = f;
+      f++;
+    }
 }
 
 extern "C" void
@@ -43,9 +47,11 @@ _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(StridedMemRefType<float, 3> *X,
                                                float f) {
   for (unsigned i = 0; i < X->sizes[0]; ++i)
     for (unsigned j = 0; j < X->sizes[1]; ++j)
-      for (unsigned k = 0; k < X->sizes[2]; ++k)
+      for (unsigned k = 0; k < X->sizes[2]; ++k) {
         *(X->data + X->offset + i * X->strides[0] + j * X->strides[1] +
           k * X->strides[2]) = f;
+        f++;
+      }
 }
 
 extern "C" void
@@ -132,13 +138,13 @@ void matmulBlas(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *B,
     printMemRefMetaData(std::cerr, *C);
     return;
   }
-  std::cout << "\nA -> \n";
-  printMemRefMetaData(std::cerr, *A);
-  std::cout << "\nB -> \n";
-  printMemRefMetaData(std::cerr, *B);
-  std::cout << "\nC -> \n";
-  printMemRefMetaData(std::cerr, *C);
-  std::cout << "\n";
+  // std::cout << "\nA -> \n";
+  // printMemRefMetaData(std::cerr, *A);
+  // std::cout << "\nB -> \n";
+  // printMemRefMetaData(std::cerr, *B);
+  // std::cout << "\nC -> \n";
+  // printMemRefMetaData(std::cerr, *C);
+  // std::cout << "\n";
   size_t M = C->sizes[0];
   size_t N = C->sizes[1];
   size_t K = A->sizes[1];
@@ -239,23 +245,21 @@ inline memory::desc getMemDescr(const memory::dims &dims,
   return memory::desc(blocked_md);
 }
 
-extern "C" void
-_mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
-                                      StridedMemRefType<float, 3> *D, int *perm,
-                                      int s) {
-  std::cout << "\nSource -> \n";
-  printMemRefMetaData(std::cerr, *S);
-  std::cout << "\nDest -> \n";
-  printMemRefMetaData(std::cerr, *D);
-  std::cout << "\n\n";
+void transposeBlas(StridedMemRefType<float, 3> *S,
+                   StridedMemRefType<float, 3> *D, int *perm, int s) {
+  // std::cout << "\nSource -> \n";
+  // printMemRefMetaData(std::cerr, *S);
+  // std::cout << "\nDest -> \n";
+  // printMemRefMetaData(std::cerr, *D);
+  // std::cout << "\n\n";
 
   std::vector<int> arrayPerm{};
   for (int i = 0; i < s; i++)
     arrayPerm.push_back(*(perm++));
 
-  std::cout << "\nPermutation -> \n";
-  for (const auto elem : arrayPerm)
-    std::cout << elem << "\n";
+  // std::cout << "\nPermutation -> \n";
+  // for (const auto elem : arrayPerm)
+  //  std::cout << elem << "\n";
 
   auto cpu_engine = engine(engine::kind::cpu, 0);
   memory::dims in_dims = shapeToMklDnnDims(S);
@@ -270,6 +274,13 @@ _mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
   auto r1 = reorder(inputMemory, outputMemory);
   auto stream_cpu = stream(cpu_engine);
   r1.execute(stream_cpu, inputMemory, outputMemory);
+}
+
+extern "C" void
+_mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
+                                      StridedMemRefType<float, 3> *D, int *perm,
+                                      int s) {
+  transposeBlas(S, D, perm, s);
 }
 
 extern "C" void
@@ -289,6 +300,138 @@ _mlir_ciface_reshape_5x3x4_to_5x12(StridedMemRefType<float, 3> *S,
 extern "C" void
 _mlir_ciface_reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
                                    StridedMemRefType<float, 3> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view2x3xf32_f32(StridedMemRefType<float, 2> *X,
+                                         float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view2x4x5xf32_f32(StridedMemRefType<float, 3> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view5x3x4xf32_f32(StridedMemRefType<float, 3> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
+}
+
+extern "C" void _mlir_ciface_matmul_2x3x20(StridedMemRefType<float, 2> *C,
+                                           StridedMemRefType<float, 2> *B,
+                                           StridedMemRefType<float, 2> *A) {
+  matmulBlas(C, B, A);
+}
+
+extern "C" void
+_mlir_ciface_transpose_5x3x4_to_4x5x3(StridedMemRefType<float, 3> *S,
+                                      StridedMemRefType<float, 3> *D, int *perm,
+                                      int s) {
+  transposeBlas(S, D, perm, s);
+}
+
+extern "C" void
+_mlir_ciface_reshape_2x4x5_to_2x20(StridedMemRefType<float, 3> *S,
+                                   StridedMemRefType<float, 2> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_reshape_4x5x3_to_20x3(StridedMemRefType<float, 3> *S,
+                                   StridedMemRefType<float, 2> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view1024x1024xf32_f32(StridedMemRefType<float, 2> *X,
+                                               float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_matmul_1024x1024x1024(StridedMemRefType<float, 2> *C,
+                                   StridedMemRefType<float, 2> *B,
+                                   StridedMemRefType<float, 2> *A) {
+  matmulBlas(C, B, A);
+}
+
+extern "C" void
+_mlir_ciface_transpose_32x1024x32_to_32x32x1024(StridedMemRefType<float, 3> *S,
+                                                StridedMemRefType<float, 3> *D,
+                                                int *perm, int s) {
+  transposeBlas(S, D, perm, s);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view1024x32x32xf32_f32(StridedMemRefType<float, 3> *X,
+                                                float f) {
+  _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view32x1024x32xf32_f32(StridedMemRefType<float, 3> *X,
+                                                float f) {
+  _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_reshape_32x32x1024_to_1024x1024(StridedMemRefType<float, 3> *S,
+                                             StridedMemRefType<float, 2> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_reshape_1024x32x32_to_1024x1024(StridedMemRefType<float, 3> *S,
+                                             StridedMemRefType<float, 2> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_reshape_1024x1024_to_32x1024x32(StridedMemRefType<float, 2> *S,
+                                             StridedMemRefType<float, 3> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view32x32x1024xf32_f32(StridedMemRefType<float, 3> *X,
+                                                float f) {
+  _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_transpose_32x1024x32_to_1024x32x32(StridedMemRefType<float, 3> *S,
+                                                StridedMemRefType<float, 3> *D,
+                                                int *perm, int s) {
+  transposeBlas(S, D, perm, s);
+}
+
+extern "C" void
+_mlir_ciface_reshape_1024x1024_to_1024x32x32(StridedMemRefType<float, 2> *S,
+                                             StridedMemRefType<float, 3> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * sizeof(float));
+}
+
+extern "C" void
+_mlir_ciface_transpose_32x32x1024_to_32x32x1024(StridedMemRefType<float, 3> *S,
+                                                StridedMemRefType<float, 3> *D,
+                                                int *perm, int s) {
+  transposeBlas(S, D, perm, s);
+}
+
+extern "C" void
+_mlir_ciface_reshape_1024x1024_to_32x32x1024(StridedMemRefType<float, 2> *S,
+                                             StridedMemRefType<float, 3> *D) {
   memcpy(D->data + D->offset, S->data + S->offset,
          S->sizes[0] * S->sizes[1] * sizeof(float));
 }
