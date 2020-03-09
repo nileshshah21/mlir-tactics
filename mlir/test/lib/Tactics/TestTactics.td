@@ -94,7 +94,7 @@ def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
   eraseOpBuilder
 ]>;
 
-def testTransposeTensor : Tactics<"C(i, j, k) += A(i, l) * B(j, l, k)", [
+def testTTGTabcadbdc : Tactics<"C(i, j, k) += A(i, l) * B(j, l, k)", [
   permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
   reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
   reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{1, 2}">>,
@@ -103,12 +103,12 @@ def testTransposeTensor : Tactics<"C(i, j, k) += A(i, l) * B(j, l, k)", [
   eraseOpBuilder
 ]>;
 
-def liftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
+def testliftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
   matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
-def transposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
+def testTransposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
   permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
   matmulBuilder<Inputs<["D", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
