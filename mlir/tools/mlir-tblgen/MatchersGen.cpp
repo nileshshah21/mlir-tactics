@@ -136,6 +136,12 @@ void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
   auto permutations = getField("affineExpr");
   assert((permutations.size()) == 1 &&
          "expect single permutation for transpose");
+  // each transpose operation does the following:
+  // 1. create a new memref
+  // 2. compose the function call and create a global
+  // array of ints to represent the permuation.
+  // 3. create the signature for the transpose fn call.
+  // (memref source, memref dest, int* perm, int perm.size()).
   auto permutation = permutations[0];
   os << formatv(
       R"(
@@ -145,10 +151,16 @@ void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
     auto fn = composeFunctionCallName(FUNCTION::TRANSPOSE,
       llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType });
+    auto *llvmDialect = op.getContext()->getRegisteredDialect<mlir::LLVM::LLVMDialect>();
+    assert(llvmDialect && "expected llvm dialect to be registered");
+    auto global = getOrCreateGlobalArray(op.getLoc(), rewriter, getPermutationArrayName( {1} ),
+      {1}, module, llvmDialect);
+    mlir::Value permutationSize = 
+      getPermutationSizeAsConstantOp(op.getLoc(), rewriter, {1}, llvmDialect ); 
     auto symbolFn = getOrInsertFunction(rewriter, module, fn,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType });
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType, global.getType(), permutationSize.getType() });
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
-      llvm::ArrayRef<mlir::Value>{ {0}, {2} });
+      llvm::ArrayRef<mlir::Value>{ {0}, {2}, global, permutationSize });
   )",
       lookupOperand, permutation, emittedVar);
 }
