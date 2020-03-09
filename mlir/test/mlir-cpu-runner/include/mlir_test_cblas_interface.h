@@ -61,11 +61,11 @@ _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
     StridedMemRefType<float, 2> *C);
 
 extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
-_mlir_ciface_Matmul_42x42x42(StridedMemRefType<float, 2> *A,
+_mlir_ciface_matmul_42x42x42(StridedMemRefType<float, 2> *A,
                              StridedMemRefType<float, 2> *B,
                              StridedMemRefType<float, 2> *C);
 extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
-_mlir_ciface_Matmul_2x12x5(StridedMemRefType<float, 2> *A,
+_mlir_ciface_matmul_2x12x5(StridedMemRefType<float, 2> *A,
                            StridedMemRefType<float, 2> *B,
                            StridedMemRefType<float, 2> *C);
 
@@ -86,19 +86,19 @@ _mlir_ciface_linalg_fill_view2x5xf32_f32(StridedMemRefType<float, 2> *X,
                                          float f);
 
 extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
-_mlir_ciface_Transpose_3x5x4(StridedMemRefType<float, 3> *S,
+_mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
                              StridedMemRefType<float, 3> *D, int *perm, int s);
 
 extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
-_mlir_ciface_Reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
+_mlir_ciface_reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
                                    StridedMemRefType<float, 3> *D);
 
 extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
-_mlir_ciface_Reshape_5x3x4_to_5x12(StridedMemRefType<float, 3> *S,
+_mlir_ciface_reshape_5x3x4_to_5x12(StridedMemRefType<float, 3> *S,
                                    StridedMemRefType<float, 2> *D);
 
 extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
-_mlir_ciface_Reshape_2x3x4_to_2x12(StridedMemRefType<float, 3> *S,
+_mlir_ciface_reshape_2x3x4_to_2x12(StridedMemRefType<float, 3> *S,
                                    StridedMemRefType<float, 2> *D);
 
 #endif // MLIR_CPU_RUNNER_CBLAS_INTERFACE_H_
