@@ -120,8 +120,8 @@ extern "C" void _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
       B->strides[0], 1.0f, C->data + C->offset, C->strides[0]);
 }
 
-void Matmul(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *B,
-            StridedMemRefType<float, 2> *A) {
+void matmulBlas(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *B,
+                StridedMemRefType<float, 2> *A) {
   if (A->strides[1] != B->strides[1] || A->strides[1] != C->strides[1] ||
       A->strides[1] != 1 || A->sizes[0] < A->strides[1] ||
       B->sizes[0] < B->strides[1] || C->sizes[0] < C->strides[1] ||
@@ -154,16 +154,16 @@ void Matmul(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *B,
 }
 
 // FIXME use the more conventional A, B and C.
-extern "C" void _mlir_ciface_Matmul_42x42x42(StridedMemRefType<float, 2> *C,
+extern "C" void _mlir_ciface_matmul_42x42x42(StridedMemRefType<float, 2> *C,
                                              StridedMemRefType<float, 2> *B,
                                              StridedMemRefType<float, 2> *A) {
-  Matmul(C, B, A);
+  matmulBlas(C, B, A);
 }
 
-extern "C" void _mlir_ciface_Matmul_2x12x5(StridedMemRefType<float, 2> *C,
+extern "C" void _mlir_ciface_matmul_2x12x5(StridedMemRefType<float, 2> *C,
                                            StridedMemRefType<float, 2> *B,
                                            StridedMemRefType<float, 2> *A) {
-  Matmul(C, B, A);
+  matmulBlas(C, B, A);
 }
 
 extern "C" void
@@ -239,9 +239,10 @@ inline memory::desc getMemDescr(const memory::dims &dims,
   return memory::desc(blocked_md);
 }
 
-extern "C" void _mlir_ciface_Transpose_3x5x4(StridedMemRefType<float, 3> *S,
-                                             StridedMemRefType<float, 3> *D,
-                                             int *perm, int s) {
+extern "C" void
+_mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
+                                      StridedMemRefType<float, 3> *D, int *perm,
+                                      int s) {
   std::cout << "\nSource -> \n";
   printMemRefMetaData(std::cerr, *S);
   std::cout << "\nDest -> \n";
@@ -272,21 +273,21 @@ extern "C" void _mlir_ciface_Transpose_3x5x4(StridedMemRefType<float, 3> *S,
 }
 
 extern "C" void
-_mlir_ciface_Reshape_2x3x4_to_2x12(StridedMemRefType<float, 3> *S,
+_mlir_ciface_reshape_2x3x4_to_2x12(StridedMemRefType<float, 3> *S,
                                    StridedMemRefType<float, 2> *D) {
   memcpy(D->data + D->offset, S->data + S->offset,
          S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
 }
 
 extern "C" void
-_mlir_ciface_Reshape_5x3x4_to_5x12(StridedMemRefType<float, 3> *S,
+_mlir_ciface_reshape_5x3x4_to_5x12(StridedMemRefType<float, 3> *S,
                                    StridedMemRefType<float, 2> *D) {
   memcpy(D->data + D->offset, S->data + S->offset,
          S->sizes[0] * S->sizes[1] * S->sizes[2] * sizeof(float));
 }
 
 extern "C" void
-_mlir_ciface_Reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
+_mlir_ciface_reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
                                    StridedMemRefType<float, 3> *D) {
   memcpy(D->data + D->offset, S->data + S->offset,
          S->sizes[0] * S->sizes[1] * sizeof(float));
