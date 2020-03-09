@@ -37,7 +37,7 @@ func @gemmPosOperandTest(%A : memref<5x3xf32>, %B: memref<3x6xf32>, %C: memref<5
 }
 
 func @gemmTransposeA(%A: memref<3x5xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf32>) {
-  // CHECK: @transpose_3x5
+  // CHECK: @transpose_3x5_to_5x3
   // CHECK-NEXT: @matmul_5x6x3
   // CHECK-NEXT: return
   affine.for %i = 0 to 5 {
