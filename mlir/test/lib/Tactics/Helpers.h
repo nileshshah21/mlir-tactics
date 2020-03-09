@@ -29,7 +29,7 @@ enum class FUNCTION {
 
 std::string
 composeFunctionNameForTranspose(const llvm::ArrayRef<mlir::Type> &types) {
-  std::string result = "Transpose_";
+  std::string result = "transpose_";
   auto TShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
   for (size_t i = 0; i < TShape.size() - 1; i++)
     result += std::to_string(TShape[i]) + "x";
@@ -105,7 +105,7 @@ composeFunctionNameForMatmul(const llvm::ArrayRef<mlir::Type> &types) {
     llvm_unreachable("expect 3 memref");
   auto AShape = types[2].dyn_cast<mlir::MemRefType>().getShape();
   auto CShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
-  std::string result = "Matmul_";
+  std::string result = "matmul_";
   result += std::to_string(CShape[0]) + "x" + std::to_string(CShape[1]) + "x" +
             std::to_string(AShape[1]);
   return result;
@@ -115,7 +115,7 @@ std::string
 composeFunctionNameForReshape(const llvm::ArrayRef<mlir::Type> &types) {
   if (types.size() != 2)
     llvm_unreachable("expect single memref");
-  std::string result = "Reshape_";
+  std::string result = "reshape_";
   auto SShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
   auto DShape = types[1].dyn_cast<mlir::MemRefType>().getShape();
   for (size_t i = 0; i < SShape.size() - 1; i++)
