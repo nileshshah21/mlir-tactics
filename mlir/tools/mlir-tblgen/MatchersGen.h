@@ -48,7 +48,7 @@ private:
   // we can have simple wrapper around them.
   std::vector<StringRef> getField(StringRef id);
 
-  void emitPreamble();
+  void emitPreamble(bool &isEmitted, std::string &dest);
   void emitPostamble();
 
   // matmul builders/helpers.

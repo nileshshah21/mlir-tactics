@@ -251,13 +251,17 @@ void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
 // is not already available in the symbol table.
 // We also insert the new variable in the symbol table and
 // bind it with the output.
-void BuilderEmitter::emitPreamble() {
+void BuilderEmitter::emitPreamble(bool &isEmitted, std::string &dest) {
   // get new variable name if output not defined yet.
   auto outputs = getField("outputs");
   assert((outputs.size() == 1) && "expect single output");
+  isEmitted = false;
+  dest = outputs[0].str();
   auto isAlreadyDefined = symbolTable_.lookup(outputs[0].str());
   if (!isAlreadyDefined) {
     auto emittedVar = symbolTable_.getNextVariable();
+    isEmitted = true;
+    dest = emittedVar;
     symbolTable_.updateOrInsert(outputs[0].str(), emittedVar);
     os << formatv(
         R"(
@@ -291,42 +295,25 @@ void BuilderEmitter::emitPostamble() {
 void BuilderEmitter::emit() {
   auto builderName = record_->getValueAsString("name");
   LLVM_DEBUG(dbgs() << "emitting ---> " << builderName << "\n");
-
+  std::string dest = "unknown";
+  bool isEmitted = false;
   if (builderName.equals("matmul")) {
-    emitPreamble();
+    emitPreamble(isEmitted, dest);
     emitMatmul();
     emitPostamble();
-    return;
   }
   if (builderName.equals("permute")) {
-    auto outputs = getField("outputs");
-    assert((outputs.size() == 1) && "reshape exepect single output");
-    emitPreamble();
-    // note that emitPreamble can emit, a new variable
-    // and update the symbol table.
-    std::string lookupOutput;
-    symbolTable_.lookup(outputs[0].str(), lookupOutput);
-    emitTranspose(lookupOutput);
+    emitPreamble(isEmitted, dest);
+    emitTranspose(dest);
     emitPostamble();
-    return;
   }
   if (builderName.equals("reshape")) {
-    auto outputs = getField("outputs");
-    assert((outputs.size() == 1) && "reshape exepect single output");
-    emitPreamble();
-    // note that emitPreamble can emit, a new variable
-    // and update the symbol table.
-    std::string lookupOutput;
-    symbolTable_.lookup(outputs[0].str(), lookupOutput);
-    emitReshape(lookupOutput);
+    emitPreamble(isEmitted, dest);
+    emitReshape(dest);
     emitPostamble();
-    return;
   }
-  if (builderName.equals("erase")) {
+  if (builderName.equals("erase"))
     emitErase();
-    return;
-  }
-  assert(0 && "case not convered");
 }
 
 void SymbolTableMap::dump() const {
