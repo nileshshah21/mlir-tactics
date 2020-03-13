@@ -131,7 +131,7 @@ std::string BuilderEmitter::getTransposeInputOperand() {
   return lookupInput;
 }
 
-void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string emittedVar) {
+void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
   auto lookupInputOperand = getTransposeInputOperand();
   auto permutations = getField("affineExpr");
   assert((permutations.size()) == 1 &&
@@ -152,7 +152,7 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string emittedVar) {
         R"(
     auto tType = {0}.getType().dyn_cast<mlir::MemRefType>();
     )",
-        emittedVar);
+        destBuff);
   } else {
     os << formatv(
         R"(
@@ -160,7 +160,7 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string emittedVar) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
     )",
-        lookupInputOperand, permutation, emittedVar);
+        lookupInputOperand, permutation, destBuff);
   }
   os << formatv(
       R"(
@@ -177,10 +177,10 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string emittedVar) {
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {2}, global, permutationSize });
   )",
-      lookupInputOperand, permutation, emittedVar);
+      lookupInputOperand, permutation, destBuff);
 }
 
-void BuilderEmitter::emitTranspose(bool isEmitted, std::string emittedVar) {
+void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
   if (!clEmitBlas) {
     emitTransposeHelpers();
     os << record_->getValueAsString("body");
@@ -191,9 +191,9 @@ void BuilderEmitter::emitTranspose(bool isEmitted, std::string emittedVar) {
     {0} = rewriter.create<mlir::linalg::TransposeOp>(
       op.getLoc(), getOperandFromParamsPermute(), mlir::AffineMapAttr::get(permutationMap));
     )",
-        emittedVar);
+        destBuff);
   } else
-    emitTransposeBlas(isEmitted, emittedVar);
+    emitTransposeBlas(isEmitted, destBuff);
 }
 
 // FIXME: duplicate code with getTransposeOperand.
@@ -206,7 +206,7 @@ std::string BuilderEmitter::getReshapeInputOperand() {
   return lookupInput;
 }
 
-void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string emittedVar) {
+void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
   auto lookupInputOperand = getReshapeInputOperand();
   auto indexMaps = getField("affineExpr");
   auto indexMap = indexMaps[0];
@@ -220,7 +220,7 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string emittedVar) {
         R"(
     auto tType = {0}.getType().dyn_cast<mlir::MemRefType>();
     )",
-        emittedVar);
+        destBuff);
   } else {
     os << formatv(
         R"(
@@ -228,7 +228,7 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string emittedVar) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
   )",
-        lookupInputOperand, indexMap, emittedVar);
+        lookupInputOperand, indexMap, destBuff);
   }
   os << formatv(
       R"(
@@ -239,14 +239,14 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string emittedVar) {
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {1} });
   )",
-      lookupInputOperand, emittedVar);
+      lookupInputOperand, destBuff);
 }
 
-void BuilderEmitter::emitReshape(bool isEmitted, std::string emittedVar) {
+void BuilderEmitter::emitReshape(bool isEmitted, std::string destBuff) {
   if (!clEmitBlas)
     os << "assert(0);\n";
   else
-    emitReshapeBlas(isEmitted, emittedVar);
+    emitReshapeBlas(isEmitted, destBuff);
 }
 
 void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
