@@ -11,6 +11,7 @@
 #include "mlir/IR/Access.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/IR/MatchersBinaryOp.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
 
@@ -285,6 +286,36 @@ void test5(FuncOp f) {
   }
 }
 
+void test6(FuncOp f) {
+  assert(f.getNumArguments() == 4 && "matcher test func must have 2 args");
+  using namespace mlir::matchers;
+
+  auto a = m_Val(f.getArgument(0));
+  auto b = m_Val(f.getArgument(1));
+  auto c = m_Val(f.getArgument(2));
+  auto d = m_Val(f.getArgument(3));
+
+  auto p1 = m_AddF(a, b);
+  llvm::outs() << "Pattern m_AddF matched " << countMatches(f, p1)
+               << " times\n";
+
+  auto p2 = m_AddI(c, d);
+  llvm::outs() << "Pattern m_AddI matched " << countMatches(f, p2)
+               << " times\n";
+
+  auto p3 = m_MulI(m_AddI(c, d), c);
+  llvm::outs() << "Pattern m_MulI(m_AddI(*), *) matched " << countMatches(f, p3)
+               << " times\n";
+
+  auto p4 = m_MulF(m_AddF(a, b), a);
+  llvm::outs() << "Pattern m_MulF(m_AddF(a, b), a) matched "
+               << countMatches(f, p4) << " times\n";
+
+  auto p5 = m_MulF(m_AddF(a, b), b);
+  llvm::outs() << "Pattern m_MulF(m_AddF(a, b), b) matched "
+               << countMatches(f, p5) << " times\n";
+}
+
 void TestMatchers::runOnFunction() {
   auto f = getFunction();
   llvm::outs() << f.getName() << "\n";
@@ -298,6 +329,8 @@ void TestMatchers::runOnFunction() {
     test4(f);
   if (f.getName() == "matmulLoop")
     test5(f);
+  if (f.getName() == "binaryMatchers")
+    test6(f);
 }
 
 namespace mlir {
