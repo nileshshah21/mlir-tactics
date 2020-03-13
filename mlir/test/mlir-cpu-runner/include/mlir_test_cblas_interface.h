@@ -188,4 +188,9 @@ extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_reshape_1024x1024_to_32x32x1024(StridedMemRefType<float, 2> *S,
                                              StridedMemRefType<float, 3> *D);
 
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_transpose_32x32x1024_to_32x1024x32(StridedMemRefType<float, 3> *S,
+                                                StridedMemRefType<float, 3> *D,
+                                                int *perm, int s);
+
 #endif // MLIR_CPU_RUNNER_CBLAS_INTERFACE_H_
