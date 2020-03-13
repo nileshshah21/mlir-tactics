@@ -193,4 +193,21 @@ _mlir_ciface_transpose_32x32x1024_to_32x1024x32(StridedMemRefType<float, 3> *S,
                                                 StridedMemRefType<float, 3> *D,
                                                 int *perm, int s);
 
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_transpose_32x32x32x32_to_32x32x32x32(
+    StridedMemRefType<float, 4> *S, StridedMemRefType<float, 4> *D, int *perm,
+    int s);
+
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_linalg_fill_view32x32x32x32xf32_f32(StridedMemRefType<float, 4> *X,
+                                                 float f);
+
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_reshape_32x32x32x32_to_1024x32x32(StridedMemRefType<float, 4> *S,
+                                               StridedMemRefType<float, 3> *D);
+
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_reshape_1024x1024_to_32x32x32x32(StridedMemRefType<float, 2> *S,
+                                              StridedMemRefType<float, 4> *D);
+
 #endif // MLIR_CPU_RUNNER_CBLAS_INTERFACE_H_
