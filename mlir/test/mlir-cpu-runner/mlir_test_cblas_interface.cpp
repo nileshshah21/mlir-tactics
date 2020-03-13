@@ -435,3 +435,10 @@ _mlir_ciface_reshape_1024x1024_to_32x32x1024(StridedMemRefType<float, 2> *S,
   memcpy(D->data + D->offset, S->data + S->offset,
          S->sizes[0] * S->sizes[1] * sizeof(float));
 }
+
+extern "C" void
+_mlir_ciface_transpose_32x32x1024_to_32x1024x32(StridedMemRefType<float, 3> *S,
+                                                StridedMemRefType<float, 3> *D,
+                                                int *perm, int s) {
+  transposeBlas(S, D, perm, s);
+}
