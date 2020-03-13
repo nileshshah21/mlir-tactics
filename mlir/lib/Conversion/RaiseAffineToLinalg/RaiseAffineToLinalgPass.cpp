@@ -21,7 +21,7 @@ class RaiseAffineToLinalgPass : public FunctionPass<RaiseAffineToLinalgPass> {
 };
 } // namespace
 
-#define DEBUG_TYPE "mlir-raise-to-affine"
+#define DEBUG_TYPE "mlir-raise-to-linalg"
 
 static llvm::cl::opt<bool>
     clEmitCall("emit-blas-call", llvm::cl::desc("directly emit blas calls."),
