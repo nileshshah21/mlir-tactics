@@ -94,16 +94,21 @@ def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
   eraseOpBuilder
 ]>;
 
-def testTTGTabcadbdc : Tactics<"C(i, j, k) += A(i, l) * B(j, l, k)", [
-  permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
-  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{1, 2}">>,
-  matmulBuilder<Inputs<["A", "E"]>, Outputs<["F"]>>,
-  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"output_already_defined">>,
+def testTransposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
+  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
+  matmulBuilder<Inputs<["D", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
-def testTTGTabacddbc : Tactics<"C(i, j) += A(i, k, l) * B(l, j, k)", [
+// experiments as described in Gareev et al.
+// tensor ab-ac-cb sizes 1024x1024 - 1024x1024 - 1024x1024
+def TENSORabaccb : Tactics<"C(a,b) += A(a,c) * B(c,b)", [
+  matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
+  eraseOpBuilder
+]>;
+
+// tensor ab-acd-dbc sizes 1024x1024 - 1024x32×32 - 32x1024×32
+def TENSORabacddbc : Tactics<"C(a, b) += A(a, c, d) * B(d, b, c)", [
   permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
   reshapeBuilder<Inputs<["A"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
   reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
@@ -111,14 +116,68 @@ def testTTGTabacddbc : Tactics<"C(i, j) += A(i, k, l) * B(l, j, k)", [
   eraseOpBuilder
 ]>;
 
-def testliftToMatmulTactic : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
-  matmulBuilder<Inputs<["A", "B"]>, Outputs<["C"]>>,
+// tensor abc-acd-db sizes 32×1024×32 - 32×32×1024 - 1024×1024
+def TENSORabcacddb : Tactics<"C(a, b, c) += A(a, c, d) * B(d, b)", [
+  permutationBuilder<Inputs<["C"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["A"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
+  matmulBuilder<Inputs<["F", "B"]>, Outputs<["E"]>>, 
+  reshapeBuilder<Inputs<["E"]>, Outputs<["D"]>, AffineExpression<"">>,
+  permutationBuilder<Inputs<["D"]>, Outputs<["C"]>, AffineExpression<"{0, 2, 1}">>,
   eraseOpBuilder
 ]>;
 
-def testTransposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
-  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
-  matmulBuilder<Inputs<["D", "B"]>, Outputs<["C"]>>,
+// tensor abc-ad-bdc sizes 1024×32×32 - 1024×1024- 32×1024×32
+def TENSORabcadbdc : Tactics<"C(a, b, c) += A(a, d) * B(b, d, c)", [
+  permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{1, 2}">>,
+  matmulBuilder<Inputs<["A", "E"]>, Outputs<["F"]>>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"">>,
+  eraseOpBuilder
+]>;
+
+// tensor ab-cad-dcb 1024×1024 - 32×1024×32 - 32×32×1024
+def TENSORabcaddcb : Tactics<"C(a, b) += A(c, a, d) * B(d, c, b)", [
+  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
+  permutationBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{1, 0, 2}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{1, 2}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["H"]>, AffineExpression<"{0, 1}">>,
+  matmulBuilder<Inputs<["F", "H"]>, Outputs<["C"]>>,
+  eraseOpBuilder
+]>;
+
+// tensor abc-bda-dc 32×32×1024 - 32×1024×32 - 1024×1024
+def TENSORabcdbadc : Tactics<"C(a, b, c) += A(b, d, a) * B(d, c)", [
+  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
+  reshapeBuilder<Inputs<["C"]>, Outputs<["E"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
+  matmulBuilder<Inputs<["F", "B"]>, Outputs<["E"]>>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["C"]>, AffineExpression<"">>,
+  eraseOpBuilder
+]>;
+
+// tensor abcd-aebf-dfce 32×32×32x32 - 32×32×32x32 - 32×32x32x32
+// TODO: for each tensor we need two reshape operations to bring it 
+// from 4d to a 2d tensor. We may want to have a more complex reshape
+// builder which takes as input pair of dimensions to be reshaped. 
+// For example: 
+// reshapeBuilder<Inputs<["C"]>, Outputs<["G"]>, AffineExpression<"{0, 1}, {1, 2}">>
+def TENSORabcdaebfdfce : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(d, f, c, e)", [
+  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1, 3}">>,
+  permutationBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{3, 1, 2, 0}">>,
+  
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["G"]>, AffineExpression<"{1, 2}">>, // C
+  
+  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["H"]>, Outputs<["I"]>, AffineExpression<"{1, 2}">>, // A
+  
+  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["L"]>, Outputs<["M"]>, AffineExpression<"{1, 2}">>, // B
+
+  matmulBuilder<Inputs<["I", "M"]>, Outputs<["G"]>>,
+  reshapeBuilder<Inputs<["G"]>, Outputs<["C"]>, AffineExpression<"">>,
   eraseOpBuilder
 ]>;
 
