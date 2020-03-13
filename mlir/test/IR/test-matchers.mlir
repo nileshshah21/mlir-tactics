@@ -102,3 +102,21 @@ func @matmulLoop(%A: memref<42x42xf32>, %B: memref<42x42xf32>, %C: memref<42x42x
 
 // CHECK-LABEL: matmulLoop
 //       CHECK:  Pattern add(C(i, j), mul(A(i, k), B(k, j))) matched 1 times
+
+func @binaryMatchers(%a: f32, %b: f32, %c: i32, %d: i32) {
+  %0 = addf %a, %b: f32
+  %1 = addf %b, %a: f32
+  %2 = addi %d, %c: i32
+  %3 = addi %c, %d: i32
+  %4 = muli %3, %c: i32
+  %5 = muli %c, %3: i32
+  %6 = mulf %0, %a: f32
+  return
+}
+
+// CHECK-LABEL: binaryMatchers
+//       CHECK: Pattern m_AddF matched 1 times
+//       CHECK: Pattern m_AddI matched 2 times
+//       CHECK: Pattern m_MulI(m_AddI(*), *) matched 2 times
+//       CHECK: Pattern m_MulF(m_AddF(a, b), a) matched 1 times
+//       CHECK: Pattern m_MulF(m_AddF(a, b), b) matched 0 times
