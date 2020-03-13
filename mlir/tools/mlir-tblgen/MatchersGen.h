@@ -58,15 +58,15 @@ private:
   void emitMatmulBlas();
 
   // transpose builders/helpers.
-  void emitTranspose(std::string emittedVar);
+  void emitTranspose(bool isEmitted, std::string emittedVar);
   void emitTransposeHelpers();
-  std::string getTransposeOperand();
-  void emitTransposeBlas(std::string emittedVar);
+  std::string getTransposeInputOperand();
+  void emitTransposeBlas(bool isEmitted, std::string emittedVar);
 
   // reshape builders/helpers.
-  void emitReshape(std::string emittedVar);
-  void emitReshapeBlas(std::string emittedVar);
-  std::string getReshapeOperand();
+  void emitReshape(bool isEmitted, std::string emittedVar);
+  void emitReshapeBlas(bool isEmitted, std::string emittedVar);
+  std::string getReshapeInputOperand();
 
   void emitErase();
 

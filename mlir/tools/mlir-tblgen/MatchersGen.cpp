@@ -122,7 +122,7 @@ void BuilderEmitter::emitTransposeHelpers() {
       affineExpr[0]);
 }
 
-std::string BuilderEmitter::getTransposeOperand() {
+std::string BuilderEmitter::getTransposeInputOperand() {
   auto inputs = getField("inputs");
   assert((inputs.size() == 1) && "expect single input for transpose");
   std::string lookupInput;
@@ -131,24 +131,39 @@ std::string BuilderEmitter::getTransposeOperand() {
   return lookupInput;
 }
 
-void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
-  auto lookupOperand = getTransposeOperand();
+void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string emittedVar) {
+  auto lookupInputOperand = getTransposeInputOperand();
   auto permutations = getField("affineExpr");
   assert((permutations.size()) == 1 &&
          "expect single permutation for transpose");
+  auto permutation = permutations[0];
   // each transpose operation does the following:
-  // 1. create a new memref
+  // 1. create a new memref, if "isEmitted" is assert.
   // 2. compose the function call and create a global
   // array of ints to represent the permuation.
   // 3. create the signature for the transpose fn call.
   // (memref source, memref dest, int* perm, int perm.size()).
-  auto permutation = permutations[0];
   os << formatv(
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
+  )");
+  if (!isEmitted) {
+    os << formatv(
+        R"(
+    auto tType = {0}.getType().dyn_cast<mlir::MemRefType>();
+    )",
+        emittedVar);
+  } else {
+    os << formatv(
+        R"(
     auto tType = getTransposedMemref(
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
+    )",
+        lookupInputOperand, permutation, emittedVar);
+  }
+  os << formatv(
+      R"(
     auto fn = composeFunctionCallName(FUNCTION::TRANSPOSE,
       llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType });
     auto *llvmDialect = op.getContext()->getRegisteredDialect<mlir::LLVM::LLVMDialect>();
@@ -162,10 +177,10 @@ void BuilderEmitter::emitTransposeBlas(std::string emittedVar) {
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {2}, global, permutationSize });
   )",
-      lookupOperand, permutation, emittedVar);
+      lookupInputOperand, permutation, emittedVar);
 }
 
-void BuilderEmitter::emitTranspose(std::string emittedVar) {
+void BuilderEmitter::emitTranspose(bool isEmitted, std::string emittedVar) {
   if (!clEmitBlas) {
     emitTransposeHelpers();
     os << record_->getValueAsString("body");
@@ -178,11 +193,11 @@ void BuilderEmitter::emitTranspose(std::string emittedVar) {
     )",
         emittedVar);
   } else
-    emitTransposeBlas(emittedVar);
+    emitTransposeBlas(isEmitted, emittedVar);
 }
 
 // FIXME: duplicate code with getTransposeOperand.
-std::string BuilderEmitter::getReshapeOperand() {
+std::string BuilderEmitter::getReshapeInputOperand() {
   auto inputs = getField("inputs");
   assert((inputs.size() == 1) && "expect single input for transpose");
   std::string lookupInput;
@@ -191,53 +206,47 @@ std::string BuilderEmitter::getReshapeOperand() {
   return lookupInput;
 }
 
-// FIXME: duplicate code. The formatv expression is similar to
-// emitTransposeBlas.
-void BuilderEmitter::emitReshapeBlas(std::string emittedVar) {
-  auto lookupOperand = getReshapeOperand();
+void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string emittedVar) {
+  auto lookupInputOperand = getReshapeInputOperand();
   auto indexMaps = getField("affineExpr");
-  auto outputReshape = getField("outputs");
-  assert(outputReshape.size() == 1);
-  assert((indexMaps.size()) == 1 &&
-         "expect single indexes position map for reshape");
   auto indexMap = indexMaps[0];
 
-  if (indexMap.equals("output_already_defined")) {
+  os << formatv(
+      R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+  )");
+  if (!isEmitted) {
     os << formatv(
         R"(
-    auto module = op.getParentOfType<mlir::ModuleOp>();
     auto tType = {0}.getType().dyn_cast<mlir::MemRefType>();
-    auto fn = composeFunctionCallName(FUNCTION::RESHAPE,
-      llvm::ArrayRef<mlir::Type>{ {1}.getType(), tType});
-    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
-      llvm::ArrayRef<mlir::Type>{ {1}.getType(), tType});
-    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
-      llvm::ArrayRef<mlir::Value>{ {1}, {0} });
     )",
-        outputReshape[0], lookupOperand);
+        emittedVar);
   } else {
     os << formatv(
         R"(
-    auto module = op.getParentOfType<mlir::ModuleOp>();
     auto tType = getReshapedMemRef(
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
+  )",
+        lookupInputOperand, indexMap, emittedVar);
+  }
+  os << formatv(
+      R"(
     auto fn = composeFunctionCallName(FUNCTION::RESHAPE,
       llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType});
     auto symbolFn = getOrInsertFunction(rewriter, module, fn,
       llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType});
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
-      llvm::ArrayRef<mlir::Value>{ {0}, {2} });
+      llvm::ArrayRef<mlir::Value>{ {0}, {1} });
   )",
-        lookupOperand, indexMap, emittedVar);
-  }
+      lookupInputOperand, emittedVar);
 }
 
-void BuilderEmitter::emitReshape(std::string emittedVar) {
+void BuilderEmitter::emitReshape(bool isEmitted, std::string emittedVar) {
   if (!clEmitBlas)
     os << "assert(0);\n";
   else
-    emitReshapeBlas(emittedVar);
+    emitReshapeBlas(isEmitted, emittedVar);
 }
 
 void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
@@ -257,8 +266,10 @@ void BuilderEmitter::emitPreamble(bool &isEmitted, std::string &dest) {
   assert((outputs.size() == 1) && "expect single output");
   isEmitted = false;
   dest = outputs[0].str();
-  auto isAlreadyDefined = symbolTable_.lookup(outputs[0].str());
-  if (!isAlreadyDefined) {
+  std::string lookupSymbol;
+  if (symbolTable_.lookup(dest, lookupSymbol)) {
+    dest = lookupSymbol;
+  } else {
     auto emittedVar = symbolTable_.getNextVariable();
     isEmitted = true;
     dest = emittedVar;
@@ -304,12 +315,12 @@ void BuilderEmitter::emit() {
   }
   if (builderName.equals("permute")) {
     emitPreamble(isEmitted, dest);
-    emitTranspose(dest);
+    emitTranspose(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("reshape")) {
     emitPreamble(isEmitted, dest);
-    emitReshape(dest);
+    emitReshape(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("erase"))
