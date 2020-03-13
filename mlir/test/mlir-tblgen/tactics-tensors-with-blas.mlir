@@ -162,4 +162,32 @@ func @contraction.abcd.aebf.dfce(%C: memref<32x32x32x32xf32>,
   return
 }
 
+func @contraction.abcd.aebf.fdec(%C: memref<32x32x32x32xf32>,
+                                 %A: memref<32x32x32x32xf32>, %B: memref<32x32x32x32xf32>) {
+  // CHECK: @transpose_32x32x32x32_to_32x32x32x32
+  // CHECK: @reshape_32x32x32x32_to_1024x32x32
+  // CHECK: @reshape_1024x32x32_to_1024x1024
+  // CHECK: @matmul_1024x1024x1024
+  // CHECK: @reshape_1024x1024_to_32x32x32x32
+  affine.for %a = 0 to 32 {
+    affine.for %b = 0 to 32 {
+      affine.for %c = 0 to 32 {
+        affine.for %d = 0 to 32 {
+          affine.for %e = 0 to 32 {
+            affine.for %f = 0 to 32 {
+              %0 = affine.load %A[%a, %e, %b, %f] : memref<32x32x32x32xf32>
+              %1 = affine.load %B[%f, %d, %e, %c] : memref<32x32x32x32xf32>
+              %2 = affine.load %C[%a, %b, %c, %d] : memref<32x32x32x32xf32>
+              %3 = mulf %0, %1 : f32
+              %4 = addf %2, %3 : f32
+              affine.store %4, %C[%a, %b, %c, %d] : memref<32x32x32x32xf32>
+            }
+          }
+        }
+      }
+    }
+  }
+  return 
+}
+
 

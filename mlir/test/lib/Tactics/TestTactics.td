@@ -181,6 +181,24 @@ def TENSORabcdaebfdfce : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(d, f, c, e)
   eraseOpBuilder
 ]>;
 
+def TENSORabcdaebffdec : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(f, d, e, c)", [
+  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1, 3}">>,
+  permutationBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{2, 0, 3, 1}">>,
+  
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["G"]>, AffineExpression<"{1, 2}">>, // C
+  
+  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["H"]>, Outputs<["I"]>, AffineExpression<"{1, 2}">>, // A
+  
+  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{0, 1}">>,
+  reshapeBuilder<Inputs<["L"]>, Outputs<["M"]>, AffineExpression<"{1, 2}">>, // B
+
+  matmulBuilder<Inputs<["I", "M"]>, Outputs<["G"]>>,
+  reshapeBuilder<Inputs<["G"]>, Outputs<["C"]>, AffineExpression<"">>,
+  eraseOpBuilder
+]>;
+ 
 /*
 TODO: hide eraseOpBuilder.
 */
