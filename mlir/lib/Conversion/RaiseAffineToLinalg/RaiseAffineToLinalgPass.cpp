@@ -9,7 +9,6 @@
 #include "mlir/IR/Access.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Matchers.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/Support/Debug.h"
 
