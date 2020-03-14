@@ -30,6 +30,7 @@
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalgPass.h"
+#include "mlir/Conversion/RaiseAffineToStencil/RaiseAffineToStencilPass.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h"
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"
 #include "mlir/Conversion/VectorToROCDL/VectorToROCDL.h"
@@ -61,13 +62,14 @@ namespace mlir {
 // The global registry is interesting to interact with the command-line tools.
 inline void registerAllPasses() {
   // Init general passes
+
 #define GEN_PASS_REGISTRATION
 #include "mlir/Transforms/Passes.h.inc"
   
   // Conversion passes
 #define GEN_PASS_REGISTRATION
 #include "mlir/Conversion/Passes.h.inc"
-
+  
   // Affine
 #define GEN_PASS_REGISTRATION
 #include "mlir/Dialect/Affine/Passes.h.inc"
