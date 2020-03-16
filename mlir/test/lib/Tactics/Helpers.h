@@ -140,7 +140,7 @@ std::string
 composeFunctionNameForMatmul(const llvm::ArrayRef<mlir::Type> &types) {
   if (types.size() != 3)
     llvm_unreachable("expect 3 memref");
-  auto AShape = types[2].dyn_cast<mlir::MemRefType>().getShape();
+  auto AShape = types[1].dyn_cast<mlir::MemRefType>().getShape();
   auto CShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
   std::string result = "matmul_";
   result += std::to_string(CShape[0]) + "x" + std::to_string(CShape[1]) + "x" +

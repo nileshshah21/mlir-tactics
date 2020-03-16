@@ -38,43 +38,36 @@ std::vector<StringRef> BuilderEmitter::getField(StringRef id) {
   return record->getValueAsListOfStrings(id);
 }
 
-SmallVector<std::string, 3> BuilderEmitter::getMatmulOperand() {
+SmallVector<std::string, 2> BuilderEmitter::getMatmulInputOperand() {
   auto inputs = getField("inputs");
-  auto outputs = getField("outputs");
-
-  assert((outputs.size() == 1) && "expect single output for matmul");
   assert((inputs.size() > 1) && (inputs.size() < 3) &&
          "expect 2 inputs for matmul");
-
-  SmallVector<std::string, 3> lookupOperands;
+  SmallVector<std::string, 2> lookupOperands;
   std::string lookupName;
   for (const auto &input : inputs) {
     if (!symbolTable_.lookup(input.str(), lookupName))
       llvm_unreachable("cannot find symbol");
     lookupOperands.push_back(lookupName);
   }
-  if (!symbolTable_.lookup(outputs[0].str(), lookupName))
-    llvm_unreachable("cannot find symbol");
-  lookupOperands.push_back(lookupName);
   return lookupOperands;
 }
 
-void BuilderEmitter::emitMatmulHelpers() {
-  auto lookupOperands = getMatmulOperand();
+void BuilderEmitter::emitMatmulHelpers(std::string A, std::string B,
+                                       std::string C) {
   os << formatv(
       R"(
     auto getOperandFromParamsMatmul = [&]() {
         llvm::SmallVector<mlir::Value, 3> res = { {0}, {1}, {2} };
         return res;
     };)",
-      lookupOperands[2], lookupOperands[1], lookupOperands[0]);
+      C, A, B);
 }
 
 // TODO: check how to properly escape { and }
 // https://llvm.org/doxygen/FormatVariadic_8h_source.html
 // mlir::Type{{} does not make a lot of sense.
-void BuilderEmitter::emitMatmulBlas() {
-  auto lookupOperands = getMatmulOperand();
+void BuilderEmitter::emitMatmulBlas(std::string A, std::string B,
+                                    std::string C) {
   os << formatv(
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
@@ -85,15 +78,18 @@ void BuilderEmitter::emitMatmulBlas() {
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {1}, {2} }); 
     )",
-      lookupOperands[2], lookupOperands[1], lookupOperands[0]);
+      C, A, B);
 }
 
-void BuilderEmitter::emitMatmul() {
+void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
+  assert((isEmitted == false) &&
+         "matmul must not emit a new buffer - in-place computation");
+  auto lookupInputOperands = getMatmulInputOperand();
   if (!clEmitBlas) {
-    emitMatmulHelpers();
+    emitMatmulHelpers(lookupInputOperands[0], lookupInputOperands[1], destBuff);
     os << record_->getValueAsString("body");
   } else
-    emitMatmulBlas();
+    emitMatmulBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff);
 }
 
 void BuilderEmitter::emitTransposeHelpers() {
@@ -310,7 +306,7 @@ void BuilderEmitter::emit() {
   bool isEmitted = false;
   if (builderName.equals("matmul")) {
     emitPreamble(isEmitted, dest);
-    emitMatmul();
+    emitMatmul(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("permute")) {

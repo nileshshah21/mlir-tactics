@@ -52,10 +52,10 @@ private:
   void emitPostamble();
 
   // matmul builders/helpers.
-  void emitMatmul();
-  void emitMatmulHelpers();
-  SmallVector<std::string, 3> getMatmulOperand();
-  void emitMatmulBlas();
+  void emitMatmul(bool isEmitted, std::string destBuff);
+  void emitMatmulHelpers(std::string A, std::string B, std::string C);
+  SmallVector<std::string, 2> getMatmulInputOperand();
+  void emitMatmulBlas(std::string A, std::string B, std::string C);
 
   // transpose builders/helpers.
   void emitTranspose(bool isEmitted, std::string destBuff);
