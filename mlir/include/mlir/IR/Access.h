@@ -100,6 +100,30 @@ private:
   details::AffinePattern buildDefaultAffinePattern();
 };
 
+inline m_Placeholder operator+(m_Placeholder p, int64_t i) {
+  p.pattern_.constant_ += i;
+  return p;
+}
+
+inline m_Placeholder operator-(m_Placeholder p, int64_t i) {
+  p.pattern_.constant_ -= i;
+  return p;
+}
+
+inline m_Placeholder operator*(int64_t i, m_Placeholder p) {
+  if (i <= 0)
+    llvm_unreachable("Invalid coefficient for Placeholder");
+  p.pattern_.coefficient_ *= i;
+  return p;
+}
+
+inline m_Placeholder operator*(m_Placeholder p, int64_t i) {
+  if (i <= 0)
+    llvm_unreachable("Invalid coefficient for Placeholder");
+  p.pattern_.coefficient_ *= i;
+  return p;
+}
+
 /// An arrayPlaceholder.
 class StructuredArrayPlaceholder : public m_Placeholder {
 public:
