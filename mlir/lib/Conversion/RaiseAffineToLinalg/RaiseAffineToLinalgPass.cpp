@@ -485,7 +485,7 @@ public:
   PatternMatchResult matchBody(Region &body, Value i, Value j, Value k,
                                Value &operandA, Value &operandB,
                                Value &operandC) const {
-    using namespace mlir::matchers;
+    using namespace matchers;
     {
       AccessPatternContext pctx(body.getContext());
 
