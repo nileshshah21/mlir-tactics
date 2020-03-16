@@ -28,7 +28,8 @@ func @main() {
   linalg.fill(%B, %cf1) : memref<32x1024x32xf32>, f32
   linalg.fill(%C, %cf0) : memref<1024x32x32xf32>, f32
 
-  call @contraction.abc.ad.bdc(%C, %A, %B) : (memref<1024x32x32xf32>, memref<1024x1024xf32>, memref<32x1024x32xf32>) -> ()
+  call @contraction.abc.ad.bdc(%C, %A, %B) : 
+    (memref<1024x32x32xf32>, memref<1024x1024xf32>, memref<32x1024x32xf32>) -> ()
   call @print_memref_3d_f32(%C) : (memref<1024x32x32xf32>) -> ()
   return 
 }
