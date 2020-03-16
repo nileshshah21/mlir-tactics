@@ -138,8 +138,8 @@ extern "C" void _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
       B->strides[0], 1.0f, C->data + C->offset, C->strides[0]);
 }
 
-void matmulBlas(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *B,
-                StridedMemRefType<float, 2> *A) {
+void matmulBlas(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *A,
+                StridedMemRefType<float, 2> *B) {
   if (A->strides[1] != B->strides[1] || A->strides[1] != C->strides[1] ||
       A->strides[1] != 1 || A->sizes[0] < A->strides[1] ||
       B->sizes[0] < B->strides[1] || C->sizes[0] < C->strides[1] ||
@@ -171,17 +171,16 @@ void matmulBlas(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *B,
     assert(0 && "dnnl_sgemm failed");
 }
 
-// FIXME use the more conventional A, B and C.
 extern "C" void _mlir_ciface_matmul_42x42x42(StridedMemRefType<float, 2> *C,
-                                             StridedMemRefType<float, 2> *B,
-                                             StridedMemRefType<float, 2> *A) {
-  matmulBlas(C, B, A);
+                                             StridedMemRefType<float, 2> *A,
+                                             StridedMemRefType<float, 2> *B) {
+  matmulBlas(C, A, B);
 }
 
 extern "C" void _mlir_ciface_matmul_2x12x5(StridedMemRefType<float, 2> *C,
-                                           StridedMemRefType<float, 2> *B,
-                                           StridedMemRefType<float, 2> *A) {
-  matmulBlas(C, B, A);
+                                           StridedMemRefType<float, 2> *A,
+                                           StridedMemRefType<float, 2> *B) {
+  matmulBlas(C, A, B);
 }
 
 extern "C" void
@@ -337,9 +336,9 @@ _mlir_ciface_linalg_fill_view5x3x4xf32_f32(StridedMemRefType<float, 3> *X,
 }
 
 extern "C" void _mlir_ciface_matmul_2x3x20(StridedMemRefType<float, 2> *C,
-                                           StridedMemRefType<float, 2> *B,
-                                           StridedMemRefType<float, 2> *A) {
-  matmulBlas(C, B, A);
+                                           StridedMemRefType<float, 2> *A,
+                                           StridedMemRefType<float, 2> *B) {
+  matmulBlas(C, A, B);
 }
 
 extern "C" void
@@ -371,9 +370,9 @@ _mlir_ciface_linalg_fill_view1024x1024xf32_f32(StridedMemRefType<float, 2> *X,
 
 extern "C" void
 _mlir_ciface_matmul_1024x1024x1024(StridedMemRefType<float, 2> *C,
-                                   StridedMemRefType<float, 2> *B,
-                                   StridedMemRefType<float, 2> *A) {
-  matmulBlas(C, B, A);
+                                   StridedMemRefType<float, 2> *A,
+                                   StridedMemRefType<float, 2> *B) {
+  matmulBlas(C, A, B);
 }
 
 extern "C" void
