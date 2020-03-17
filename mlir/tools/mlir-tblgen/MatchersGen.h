@@ -60,13 +60,11 @@ private:
   // transpose builders/helpers.
   void emitTranspose(bool isEmitted, std::string destBuff);
   void emitTransposeHelpers();
-  std::string getTransposeInputOperand();
   void emitTransposeBlas(bool isEmitted, std::string destBuff);
 
   // reshape builders/helpers.
   void emitReshape(bool isEmitted, std::string destBuff);
   void emitReshapeBlas(bool isEmitted, std::string destBuff);
-  std::string getReshapeInputOperand();
 
   // matvec builders/helpers.
   void emitMatvec(bool isEmitted, std::string destBuff);
