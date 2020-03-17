@@ -43,6 +43,17 @@ class matmulBuilder<Inputs ins, Outputs outs> : Builder {
   let outputs = outs;
 }
 
+class matvecBuilder<Inputs ins, Outputs outs> : Builder {
+  // name.
+  let name = "matvec";
+  //body.
+  let body = [{}];
+  // input params.
+  let inputs = ins;
+  // output params.
+  let outputs = outs;
+}
+
 class permutationBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Builder {
   // name.
   let name = "permute";
@@ -196,6 +207,17 @@ def TENSORabcdaebffdec : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(f, d, e, c)
 
   matmulBuilder<Inputs<["I", "M"]>, Outputs<["G"]>>,
   reshapeBuilder<Inputs<["G"]>, Outputs<["C"]>, AffineExpression<"">>,
+  eraseOpBuilder
+]>;
+
+def MatVec : Tactics<"x(i) += A(i, j) * y(j)", [
+  matvecBuilder<Inputs<["A", "y"]>, Outputs<["x"]>>,
+  eraseOpBuilder
+]>;
+
+def MatVecTrans : Tactics<"x(i) += A(j, i) * y(j)", [
+  permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
+  matvecBuilder<Inputs<["D", "y"]>, Outputs<["x"]>>,
   eraseOpBuilder
 ]>;
  

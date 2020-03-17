@@ -25,6 +25,7 @@ enum class FUNCTION {
   MATMUL,
   RESHAPE,
   TRANSPOSE,
+  MATVEC,
 };
 
 std::string
@@ -100,8 +101,7 @@ llvm::SmallVector<int64_t, 8> applyIndexMap(llvm::ArrayRef<int64_t> shape,
   assert((shape.size() > indexMap.size()) && "shape must be > than indexMap");
 
   llvm::SmallVector<int64_t, 8> result{};
-  if (!areConsecutive(indexMap))
-    assert(0 && "expect consecutive elements");
+  assert((areConsecutive(indexMap)) && "expect consecutive elements");
   int64_t newDim = 1;
   for (size_t i = 0; i < indexMap.size(); i++) {
     newDim *= shape[indexMap[i]];
@@ -138,8 +138,7 @@ mlir::MemRefType getReshapedMemRef(mlir::MemRefType source,
 
 std::string
 composeFunctionNameForMatmul(const llvm::ArrayRef<mlir::Type> &types) {
-  if (types.size() != 3)
-    llvm_unreachable("expect 3 memref");
+  assert((types.size() == 3) && "expect 3 types");
   auto AShape = types[1].dyn_cast<mlir::MemRefType>().getShape();
   auto CShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
   std::string result = "matmul_";
@@ -165,6 +164,21 @@ composeFunctionNameForReshape(const llvm::ArrayRef<mlir::Type> &types) {
   return result;
 }
 
+std::string
+composeFunctionNameForMatvec(const llvm::ArrayRef<mlir::Type> &types) {
+  assert((types.size() == 3) && "expect 3 types");
+  auto AShape = (types[0].dyn_cast<mlir::MemRefType>().getShape().size() == 2)
+                    ? types[0].dyn_cast<mlir::MemRefType>().getShape()
+                    : types[1].dyn_cast<mlir::MemRefType>().getShape();
+  assert((AShape.size() == 2) && "expect 2-d array");
+  auto xShape = types[2].dyn_cast<mlir::MemRefType>().getShape();
+  assert((xShape.size() == 1) && "expect 1-d array");
+  std::string result = "matvec_";
+  result += std::to_string(AShape[0]) + "x" + std::to_string(AShape[1]) + "x" +
+            std::to_string(xShape[0]);
+  return result;
+}
+
 template <typename... Args>
 std::string composeFunctionCallName(FUNCTION id, const Args... args) {
   llvm::ArrayRef<mlir::Type> types = {args...};
@@ -175,6 +189,8 @@ std::string composeFunctionCallName(FUNCTION id, const Args... args) {
     return composeFunctionNameForReshape(types);
   case FUNCTION::TRANSPOSE:
     return composeFunctionNameForTranspose(types);
+  case FUNCTION::MATVEC:
+    return composeFunctionNameForMatvec(types);
   }
   assert(0 && "case not convered");
   return "nullptr";

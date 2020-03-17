@@ -50,11 +50,11 @@ private:
 
   void emitPreamble(bool &isEmitted, std::string &dest);
   void emitPostamble();
+  SmallVector<std::string, 3> getInputOperands();
 
   // matmul builders/helpers.
   void emitMatmul(bool isEmitted, std::string destBuff);
   void emitMatmulHelpers(std::string A, std::string B, std::string C);
-  SmallVector<std::string, 2> getMatmulInputOperand();
   void emitMatmulBlas(std::string A, std::string B, std::string C);
 
   // transpose builders/helpers.
@@ -67,6 +67,10 @@ private:
   void emitReshape(bool isEmitted, std::string destBuff);
   void emitReshapeBlas(bool isEmitted, std::string destBuff);
   std::string getReshapeInputOperand();
+
+  // matvec builders/helpers.
+  void emitMatvec(bool isEmitted, std::string destBuff);
+  void emitMatvecBlas(std::string A, std::string x, std::string y);
 
   void emitErase();
 
