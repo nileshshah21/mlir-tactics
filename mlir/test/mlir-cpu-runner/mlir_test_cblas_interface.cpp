@@ -481,3 +481,27 @@ _mlir_ciface_reshape_1024x1024_to_32x32x32x32(StridedMemRefType<float, 2> *S,
   memcpy(D->data + D->offset, S->data + S->offset,
          S->sizes[0] * S->sizes[1] * sizeof(float));
 }
+
+extern "C" void
+_mlir_ciface_linalg_fill_view32x32xf32_f32(StridedMemRefType<float, 2> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view32x64xf32_f32(StridedMemRefType<float, 2> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view64x32xf32_f32(StridedMemRefType<float, 2> *X,
+                                           float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void _mlir_ciface_matmul_32x32x64(StridedMemRefType<float, 2> *C,
+                                             StridedMemRefType<float, 2> *A,
+                                             StridedMemRefType<float, 2> *B) {
+  matmulBlas(C, A, B);
+}
