@@ -143,17 +143,9 @@ void BuilderEmitter::emitTransposeHelpers() {
       affineExpr[0]);
 }
 
-std::string BuilderEmitter::getTransposeInputOperand() {
-  auto inputs = getField("inputs");
-  assert((inputs.size() == 1) && "expect single input for transpose");
-  std::string lookupInput;
-  if (!symbolTable_.lookup(inputs[0].str(), lookupInput))
-    llvm_unreachable("cannot find symbol");
-  return lookupInput;
-}
-
 void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
-  auto lookupInputOperand = getTransposeInputOperand();
+  auto lookupInputOperand = getInputOperands();
+  assert((lookupInputOperand.size() == 1) && "expect single operand");
   auto permutations = getField("affineExpr");
   assert((permutations.size()) == 1 &&
          "expect single permutation for transpose");
@@ -181,7 +173,7 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
     )",
-        lookupInputOperand, permutation, destBuff);
+        lookupInputOperand[0], permutation, destBuff);
   }
   os << formatv(
       R"(
@@ -198,7 +190,7 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {2}, global, permutationSize });
   )",
-      lookupInputOperand, permutation, destBuff);
+      lookupInputOperand[0], permutation, destBuff);
 }
 
 void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
@@ -217,18 +209,9 @@ void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
     emitTransposeBlas(isEmitted, destBuff);
 }
 
-// FIXME: duplicate code with getTransposeOperand.
-std::string BuilderEmitter::getReshapeInputOperand() {
-  auto inputs = getField("inputs");
-  assert((inputs.size() == 1) && "expect single input for transpose");
-  std::string lookupInput;
-  if (!symbolTable_.lookup(inputs[0].str(), lookupInput))
-    llvm_unreachable("cannot find symbol");
-  return lookupInput;
-}
-
 void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
-  auto lookupInputOperand = getReshapeInputOperand();
+  auto lookupInputOperand = getInputOperands();
+  assert((lookupInputOperand.size() == 1) && "expect single operand");
   auto indexMaps = getField("affineExpr");
   auto indexMap = indexMaps[0];
 
@@ -249,7 +232,7 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
   )",
-        lookupInputOperand, indexMap, destBuff);
+        lookupInputOperand[0], indexMap, destBuff);
   }
   os << formatv(
       R"(
@@ -260,7 +243,7 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {1} });
   )",
-      lookupInputOperand, destBuff);
+      lookupInputOperand[0], destBuff);
 }
 
 void BuilderEmitter::emitReshape(bool isEmitted, std::string destBuff) {
