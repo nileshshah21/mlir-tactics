@@ -38,20 +38,6 @@ std::vector<StringRef> BuilderEmitter::getField(StringRef id) {
   return record->getValueAsListOfStrings(id);
 }
 
-SmallVector<std::string, 2> BuilderEmitter::getMatmulInputOperand() {
-  auto inputs = getField("inputs");
-  assert((inputs.size() > 1) && (inputs.size() < 3) &&
-         "expect 2 inputs for matmul");
-  SmallVector<std::string, 2> lookupOperands;
-  std::string lookupName;
-  for (const auto &input : inputs) {
-    if (!symbolTable_.lookup(input.str(), lookupName))
-      llvm_unreachable("cannot find symbol");
-    lookupOperands.push_back(lookupName);
-  }
-  return lookupOperands;
-}
-
 void BuilderEmitter::emitMatmulHelpers(std::string A, std::string B,
                                        std::string C) {
   os << formatv(
@@ -81,10 +67,49 @@ void BuilderEmitter::emitMatmulBlas(std::string A, std::string B,
       C, A, B);
 }
 
+void BuilderEmitter::emitMatvecBlas(std::string A, std::string x,
+                                    std::string y) {
+  os << formatv(
+      R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+    auto fn = composeFunctionCallName(FUNCTION::MATVEC,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
+    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
+    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
+      llvm::ArrayRef<mlir::Value>{ {0}, {1}, {2} }); 
+    )",
+      x, A, y);
+}
+
+SmallVector<std::string, 3> BuilderEmitter::getInputOperands() {
+  auto inputs = getField("inputs");
+  SmallVector<std::string, 3> lookupOperands;
+  std::string lookupName;
+  for (const auto &input : inputs) {
+    if (!symbolTable_.lookup(input.str(), lookupName))
+      llvm_unreachable("cannot find symbol");
+    lookupOperands.push_back(lookupName);
+  }
+  return lookupOperands;
+}
+
+void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
+  assert((isEmitted == false) &&
+         "matvec must not create a new buffer - in-place operation");
+  auto lookupInputOperands = getInputOperands();
+  assert((lookupInputOperands.size() == 2) && "expect 2 args for matvec");
+  if (!clEmitBlas)
+    os << "assert(0);\n";
+  else
+    emitMatvecBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff);
+}
+
 void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
   assert((isEmitted == false) &&
          "matmul must not emit a new buffer - in-place computation");
-  auto lookupInputOperands = getMatmulInputOperand();
+  auto lookupInputOperands = getInputOperands();
+  assert((lookupInputOperands.size() == 2) && "expect 2 args for matmul");
   if (!clEmitBlas) {
     emitMatmulHelpers(lookupInputOperands[0], lookupInputOperands[1], destBuff);
     os << record_->getValueAsString("body");
@@ -307,6 +332,11 @@ void BuilderEmitter::emit() {
   if (builderName.equals("matmul")) {
     emitPreamble(isEmitted, dest);
     emitMatmul(isEmitted, dest);
+    emitPostamble();
+  }
+  if (builderName.equals("matvec")) {
+    emitPreamble(isEmitted, dest);
+    emitMatvec(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("permute")) {
