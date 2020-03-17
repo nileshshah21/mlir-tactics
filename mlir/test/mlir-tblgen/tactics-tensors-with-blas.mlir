@@ -190,4 +190,32 @@ func @contraction.abcd.aebf.fdec(%C: memref<32x32x32x32xf32>,
   return 
 }
 
+func @mvt(%x1: memref<1024xf32>, %y1: memref<1024xf32>, %A: memref<1024x1024xf32>,
+          %x2: memref<1024xf32>, %y2: memref<1024xf32>) {
 
+  // CHECK: @matvec_1024x1024x1024
+  affine.for %i = 0 to 1024 {
+    affine.for %j = 0 to 1024 {
+      %0 = affine.load %x1[%i] : memref<1024xf32>
+      %1 = affine.load %y1[%j] : memref<1024xf32>
+      %2 = affine.load %A[%i, %j] : memref<1024x1024xf32>
+      %3 = mulf %2, %1 : f32
+      %4 = addf %0, %3 : f32
+      affine.store %4, %x1[%i] : memref<1024xf32>
+    }
+  }
+
+  // CHECK: @transpose_1024x1024_to_1024x1024
+  // CHECK-NEXT: @matvec_1024x1024x1024
+  affine.for %i = 0 to 1024 {
+    affine.for %j = 0 to 1024 {
+      %0 = affine.load %x1[%i] : memref<1024xf32>
+      %1 = affine.load %y1[%j] : memref<1024xf32>
+      %2 = affine.load %A[%j, %i] : memref<1024x1024xf32>
+      %3 = mulf %2, %1 : f32
+      %4 = addf %0, %3 : f32
+      affine.store %4, %x1[%i] : memref<1024xf32>
+    }
+  }
+  return 
+}
