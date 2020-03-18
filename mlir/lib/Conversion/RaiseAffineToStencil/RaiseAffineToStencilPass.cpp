@@ -24,8 +24,8 @@ class JacobiMatcher : public OpRewritePattern<AffineForOp> {
 public:
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
 
-  PatternMatchResult matchBody(Region &body, Value i, Value &operandA,
-                               Value &operandB) const {
+  LogicalResult matchBody(Region &body, Value i, Value &operandA,
+                          Value &operandB) const {
     using namespace matchers;
     {
       AccessPatternContext pctx(body.getContext());
@@ -44,32 +44,32 @@ public:
 
       auto store = dyn_cast<AffineStoreOp>(*std::prev(body.front().end(), 2));
       if (!matchPattern(store, b))
-        return matchFailure();
+        return failure();
 
       auto mul =
           dyn_cast_or_null<MulFOp>(store.getValueToStore().getDefiningOp());
       if ((!mul) || (!stencil.match(mul)))
-        return matchFailure();
+        return failure();
 
       if (std::distance(body.front().begin(), body.front().end()) != 8)
-        return matchFailure();
+        return failure();
 
       if (i != pctx[_i])
-        return matchFailure();
+        return failure();
 
       operandA = pctx[_A];
       operandB = pctx[_B];
     }
-    return matchSuccess();
+    return success();
   }
 
-  PatternMatchResult
-  matchAndRewriteNestedPattern(Operation *op, PatternRewriter &rewriter) const {
+  LogicalResult matchAndRewriteNestedPattern(Operation *op,
+                                             PatternRewriter &rewriter) const {
     Value operandA, operandB;
     auto body = [this, &operandA, &operandB](Operation &op) -> bool {
       auto loop = cast<AffineForOp>(op);
       Value i = loop.getInductionVar(); // innermost loop - i
-      return matchBody(loop.getLoopBody(), i, operandA, operandB).hasValue();
+      return succeeded(matchBody(loop.getLoopBody(), i, operandA, operandB));
     };
 
     {
@@ -80,22 +80,22 @@ public:
       SmallVector<NestedMatch, 1> matches;
       m.match(op, &matches);
       if (matches.empty())
-        return matchFailure();
+        return failure();
     }
 
     if ((!operandA) || (!operandB))
-      return matchFailure();
+      return failure();
 
     LLVM_DEBUG(llvm::dbgs() << "Matched Jacobi1d pattern!\n");
 
     // cut
     rewriter.eraseOp(op);
-    return matchSuccess();
+    return success();
   }
 
   // main rewriting function.
-  PatternMatchResult matchAndRewrite(AffineForOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AffineForOp op,
+                                PatternRewriter &rewriter) const override {
     return matchAndRewriteNestedPattern(op, rewriter);
   }
 };
