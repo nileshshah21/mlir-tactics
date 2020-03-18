@@ -606,7 +606,7 @@ void TacticsEmitter::emitStructuralMatchLogic(size_t nestedLoops) {
       llvm::SmallVector<mlir::NestedMatch, 1> matches;
       m.match(op, &matches);
       if (matches.empty())
-        return matchFailure();
+        return mlir::failure();
     })";
 }
 
@@ -681,8 +681,8 @@ void TacticsEmitter::emit(StringRef tacticName) {
   os << "\n";
   // Emit matchAndRewrite() function.
   os << R"(
-  mlir::PatternMatchResult matchAndRewrite(mlir::AffineForOp op,
-                                           mlir::PatternRewriter &rewriter) const override {)";
+  mlir::LogicalResult matchAndRewrite(mlir::AffineForOp op,
+                                      mlir::PatternRewriter &rewriter) const override {)";
   os << "\n";
   os.indent(4) << "// Match\n";
   auto comprehension = Comprehension(parser_.parseStmt());
@@ -697,7 +697,7 @@ void TacticsEmitter::emit(StringRef tacticName) {
   BuilderEmitter::symbolTable_.clear();
   // erase the content when the tactics is done.
   os << "\n";
-  os.indent(4) << "return matchSuccess();\n";
+  os.indent(4) << "return mlir::success();\n";
   os << "  };\n";
   os << "};\n";
 }

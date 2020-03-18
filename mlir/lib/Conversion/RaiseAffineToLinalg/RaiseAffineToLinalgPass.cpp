@@ -99,9 +99,9 @@ class ContractionMatcherTranspose : public OpRewritePattern<AffineForOp> {
 public:
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
 
-  PatternMatchResult matchBody(Region &body, Value i, Value j, Value k, Value l,
-                               Value &operandA, Value &operandB,
-                               Value &operandC) const {
+  LogicalResult matchBody(Region &body, Value i, Value j, Value k, Value l,
+                          Value &operandA, Value &operandB,
+                          Value &operandC) const {
     using namespace matchers;
     {
       AccessPatternContext pctx(body.getContext());
@@ -124,29 +124,29 @@ public:
 
       auto store = dyn_cast<AffineStoreOp>(*std::prev(body.front().end(), 2));
       if (!matchPattern(store, s))
-        return matchFailure();
+        return failure();
 
       auto add =
           dyn_cast_or_null<AddFOp>(store.getValueToStore().getDefiningOp());
       if ((!add) || (!contractionOp.match(add)))
-        return matchFailure();
+        return failure();
 
       if (std::distance(body.front().begin(), body.front().end()) != 7)
-        return matchFailure();
+        return failure();
 
       if ((i != pctx[_i]) || (j != pctx[_j]) || (k != pctx[_k]) ||
           (l != pctx[_l]))
-        return matchFailure();
+        return failure();
 
       operandA = pctx[_A];
       operandB = pctx[_B];
       operandC = pctx[_C];
     }
-    return matchSuccess();
+    return success();
   }
 
-  PatternMatchResult transformOp(Operation *op, SmallVector<Value, 3> &operands,
-                                 PatternRewriter &rewriter) const {
+  LogicalResult transformOp(Operation *op, SmallVector<Value, 3> &operands,
+                            PatternRewriter &rewriter) const {
     if (!clEmitCall) {
       // emit linalg.
       using namespace edsc;
@@ -252,11 +252,11 @@ public:
       rewriter.create<CallOp>(op->getLoc(), functionName, ArrayRef<Type>{},
                               ArrayRef<Value>{reshapedC, operandC});
     }
-    return matchSuccess();
+    return success();
   }
 
-  PatternMatchResult
-  matchAndRewriteNestedPattern(Operation *op, PatternRewriter &rewriter) const {
+  LogicalResult matchAndRewriteNestedPattern(Operation *op,
+                                             PatternRewriter &rewriter) const {
     Value operandA, operandB, operandC;
     auto body = [this, &operandA, &operandB, &operandC](Operation &op) -> bool {
       auto loop = cast<AffineForOp>(op);
@@ -267,9 +267,8 @@ public:
       auto j = parent.getInductionVar();
       parent = parent.getParentOfType<AffineForOp>();
       auto i = parent.getInductionVar();
-      return matchBody(loop.getLoopBody(), i, j, k, l, operandA, operandB,
-                       operandC)
-          .hasValue();
+      return succeeded(matchBody(loop.getLoopBody(), i, j, k, l, operandA,
+                                 operandB, operandC));
     };
 
     {
@@ -279,25 +278,25 @@ public:
       SmallVector<NestedMatch, 1> matches;
       m.match(op, &matches);
       if (matches.empty())
-        return matchFailure();
+        return failure();
     }
 
     if ((!operandA) || (!operandB) || (!operandC))
-      return matchFailure();
+      return failure();
 
     LLVM_DEBUG(llvm::dbgs() << "Match Contraction with Transposed operand!\n");
 
     SmallVector<Value, 3> operands = {operandA, operandB, operandC};
-    if (!transformOp(op, operands, rewriter))
-      return matchFailure();
+    if (failed(transformOp(op, operands, rewriter)))
+      return failure();
 
     rewriter.eraseOp(op);
-    return matchSuccess();
+    return success();
   }
 
   // main rewriting function.
-  PatternMatchResult matchAndRewrite(AffineForOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AffineForOp op,
+                                PatternRewriter &rewriter) const override {
     return matchAndRewriteNestedPattern(op, rewriter);
   }
 };
@@ -307,9 +306,9 @@ class ContractionMatcher : public OpRewritePattern<AffineForOp> {
 public:
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
 
-  PatternMatchResult matchBody(Region &body, Value i, Value j, Value k, Value l,
-                               Value &operandA, Value &operandB,
-                               Value &operandC) const {
+  LogicalResult matchBody(Region &body, Value i, Value j, Value k, Value l,
+                          Value &operandA, Value &operandB,
+                          Value &operandC) const {
     using namespace matchers;
     {
       AccessPatternContext pctx(body.getContext());
@@ -332,29 +331,29 @@ public:
 
       auto store = dyn_cast<AffineStoreOp>(*std::prev(body.front().end(), 2));
       if (!matchPattern(store, s))
-        return matchFailure();
+        return failure();
 
       auto add =
           dyn_cast_or_null<AddFOp>(store.getValueToStore().getDefiningOp());
       if ((!add) || (!contractionOp.match(add)))
-        return matchFailure();
+        return failure();
 
       if (std::distance(body.front().begin(), body.front().end()) != 7)
-        return matchFailure();
+        return failure();
 
       if ((i != pctx[_i]) || (j != pctx[_j]) || (k != pctx[_k]) ||
           (l != pctx[_l]))
-        return matchFailure();
+        return failure();
 
       operandA = pctx[_A];
       operandB = pctx[_B];
       operandC = pctx[_C];
     }
-    return matchSuccess();
+    return success();
   }
 
-  PatternMatchResult
-  matchAndRewriteNestedPattern(Operation *op, PatternRewriter &rewriter) const {
+  LogicalResult matchAndRewriteNestedPattern(Operation *op,
+                                             PatternRewriter &rewriter) const {
     Value operandA, operandB, operandC;
     auto body = [this, &operandA, &operandB, &operandC](Operation &op) -> bool {
       auto loop = cast<AffineForOp>(op);
@@ -365,9 +364,8 @@ public:
       auto j = parent.getInductionVar();
       parent = parent.getParentOfType<AffineForOp>();
       auto i = parent.getInductionVar();
-      return matchBody(loop.getLoopBody(), i, j, k, l, operandA, operandB,
-                       operandC)
-          .hasValue();
+      return succeeded(matchBody(loop.getLoopBody(), i, j, k, l, operandA,
+                                 operandB, operandC));
     };
 
     {
@@ -377,11 +375,11 @@ public:
       SmallVector<NestedMatch, 1> matches;
       m.match(op, &matches);
       if (matches.empty())
-        return matchFailure();
+        return failure();
     }
 
     if ((!operandA) || (!operandB) || (!operandC))
-      return matchFailure();
+      return failure();
 
     LLVM_DEBUG(llvm::dbgs() << "Matched Contraction pattern!\n");
 
@@ -467,12 +465,12 @@ public:
       linalg_matmul(makeValueHandles(newOperands)); // mul A * B += C
     }
     rewriter.eraseOp(op);
-    return matchSuccess();
+    return success();
   }
 
   // main rewriting function.
-  PatternMatchResult matchAndRewrite(AffineForOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AffineForOp op,
+                                PatternRewriter &rewriter) const override {
     return matchAndRewriteNestedPattern(op, rewriter);
   }
 };
@@ -482,9 +480,9 @@ class MatMulMatcher : public OpRewritePattern<AffineForOp> {
 public:
   using OpRewritePattern<AffineForOp>::OpRewritePattern;
 
-  PatternMatchResult matchBody(Region &body, Value i, Value j, Value k,
-                               Value &operandA, Value &operandB,
-                               Value &operandC) const {
+  LogicalResult matchBody(Region &body, Value i, Value j, Value k,
+                          Value &operandA, Value &operandB,
+                          Value &operandC) const {
     using namespace matchers;
     {
       AccessPatternContext pctx(body.getContext());
@@ -508,30 +506,30 @@ public:
       auto store = dyn_cast<AffineStoreOp>(*std::prev(body.front().end(), 2));
 
       if (!matchPattern(store, m_Op<AffineStoreOp>(_C({_i, _j}))))
-        return matchFailure();
+        return failure();
 
       auto add =
           dyn_cast_or_null<AddFOp>(store.getValueToStore().getDefiningOp());
       if ((!add) || (!matMulOp.match(add)))
-        return matchFailure();
+        return failure();
 
       // TODO: we may be lenient to operations without side-effects, but they
       // should have been removed by DCE beforehand.
       if (std::distance(body.front().begin(), body.front().end()) != 7)
-        return matchFailure();
+        return failure();
 
       if ((i != pctx[_i]) || (j != pctx[_j]) || (k != pctx[_k]))
-        return matchFailure();
+        return failure();
 
       operandA = pctx[_A];
       operandB = pctx[_B];
       operandC = pctx[_C];
     }
-    return matchSuccess();
+    return success();
   }
 
-  PatternMatchResult
-  matchAndRewriteNestedPattern(Operation *op, PatternRewriter &rewriter) const {
+  LogicalResult matchAndRewriteNestedPattern(Operation *op,
+                                             PatternRewriter &rewriter) const {
     Value operandA, operandB, operandC;
     auto body = [this, &operandA, &operandB, &operandC](Operation &op) -> bool {
       auto loop = cast<AffineForOp>(op);
@@ -540,9 +538,8 @@ public:
       Value j = parent.getInductionVar();
       parent = parent.getParentOfType<AffineForOp>();
       Value i = parent.getInductionVar();
-      return matchBody(loop.getLoopBody(), i, j, k, operandA, operandB,
-                       operandC)
-          .hasValue();
+      return succeeded(
+          matchBody(loop.getLoopBody(), i, j, k, operandA, operandB, operandC));
     };
 
     {
@@ -552,11 +549,11 @@ public:
       SmallVector<NestedMatch, 1> matches;
       m.match(op, &matches);
       if (matches.empty())
-        return matchFailure();
+        return failure();
     }
 
     if ((!operandA) || (!operandB) || (!operandC))
-      return matchFailure();
+      return failure();
 
     LLVM_DEBUG(llvm::dbgs() << "Matched Matmul pattern!\n");
 
@@ -584,12 +581,12 @@ public:
       linalg_matmul(makeValueHandles(operands));
     }
     rewriter.eraseOp(op);
-    return matchSuccess();
+    return success();
   }
 
   // main rewriting function.
-  PatternMatchResult matchAndRewrite(AffineForOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AffineForOp op,
+                                PatternRewriter &rewriter) const override {
     return matchAndRewriteNestedPattern(op, rewriter);
   }
 };
