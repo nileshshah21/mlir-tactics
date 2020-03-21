@@ -10,5 +10,5 @@ target_link_libraries(MLIRRaiseAffineToStencilTransforms
   MLIRIR 
   MLIRPass 
   MLIRSupport 
-  MLIRAffineOps
+  MLIRAffine
 )
