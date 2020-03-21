@@ -5,7 +5,7 @@ set(LLVM_OPTIONAL_SOURCES
 
 set(LLVM_TARGET_DEFINITIONS TestTactics.td)
 mlir_tablegen(TestTacticsLinalg.inc -gen-tactics-linalg)
-mlir_tablegen(TestTacticsBlas.inc -gen-tactics-blas)
+mlir_tablegen(TestTacticsBlas.inc -gen-tactics-blas-cpu)
 add_public_tablegen_target(MLIRTestTacticsLinalgInc)
 add_public_tablegen_target(MLIRTestTacticsBlasInc)
 

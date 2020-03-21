@@ -737,7 +737,8 @@ static mlir::GenRegistration
                         return false;
                       });
 static mlir::GenRegistration
-    genMatchersBlas("gen-tactics-blas", "Generate tactics for blas calls",
+    genMatchersBlas("gen-tactics-blas-cpu",
+                    "Generate tactics for blas calls on cpu",
                     [](const RecordKeeper &records, raw_ostream &os) {
                       clEmitBlas = true;
                       emitMatchersRewriters(records, os);
