@@ -13,5 +13,5 @@ target_link_libraries(MLIRRaiseAffineToLinalgTransforms
   MLIRLinalgUtils
   MLIRPass 
   MLIRSupport 
-  MLIRAffineOps
+  MLIRAffine
 )

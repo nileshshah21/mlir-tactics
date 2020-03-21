@@ -1,7 +1,7 @@
 #ifndef MLIR_IR_ACCESS_MATCHER_H_
 #define MLIR_IR_ACCESS_MATCHER_H_
 
-#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h" // remove me
