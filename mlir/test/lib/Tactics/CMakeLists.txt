@@ -34,7 +34,7 @@ target_link_libraries(MLIRTestTacticsBlas
   MLIRIR
   MLIRPass
   LLVMSupport
-  MLIRAffineOps
+  MLIRAffine
 ) 
 
 target_link_libraries(MLIRTestTacticsLinalg
@@ -42,5 +42,5 @@ target_link_libraries(MLIRTestTacticsLinalg
   MLIRIR
   MLIRPass
   LLVMSupport
-  MLIRAffineOps
+  MLIRAffine
 )

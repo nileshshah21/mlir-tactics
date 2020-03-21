@@ -1,7 +1,7 @@
 #include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalgPass.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalg.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Linalg/EDSC/Intrinsics.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"

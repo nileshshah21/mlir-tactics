@@ -1,6 +1,6 @@
 #include "mlir/Conversion/RaiseAffineToStencil/RaiseAffineToStencilPass.h"
 #include "mlir/Analysis/NestedMatcher.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Access.h"
 #include "mlir/IR/Matchers.h"
