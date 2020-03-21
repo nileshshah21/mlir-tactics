@@ -14,6 +14,7 @@
 #include "include/mlir_test_cblas.h"
 #include <assert.h>
 #include <iostream>
+#include <string.h>
 
 #include "dnnl.hpp"
 using namespace dnnl;
