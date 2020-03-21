@@ -1,0 +1,8 @@
+set(MKLDNN_ROOT "$ENV{HOME}/mkl-dnn")
+set(MKLDNN_FOUND FALSE)
+
+find_path(MKLDNN_INCLUDE_PATH mkldnn.hpp mkldnn.h PATHS ${MKLDNN_ROOT} PATH_SUFFIXES install/include)
+if(MKLDNN_INCLUDE_PATH)
+  set(MKLDNN_LIBRARY_PATH ${MKLDNN_ROOT}/install/lib)
+  set(MKLDNN_FOUND TRUE)
+endif(MKLDNN_INCLUDE_PATH)
