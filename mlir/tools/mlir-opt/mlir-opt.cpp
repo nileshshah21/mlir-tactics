@@ -10,7 +10,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-
 #include "mlir/IR/AsmState.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
@@ -70,7 +69,7 @@ void registerTestSCFUtilsPass();
 void registerTestVectorConversions();
 void registerVectorizerTestPass();
 void registerTacticsTestLinalgPass();
-void registerTacticsTestBlasPass();
+void registerTacticsTestBlasPassCpu();
 } // namespace mlir
 
 static cl::opt<std::string>
@@ -147,7 +146,7 @@ void registerTestPasses() {
   registerTestVectorConversions();
   registerVectorizerTestPass();
   registerTacticsTestLinalgPass();
-  registerTacticsTestBlasPass();
+  registerTacticsTestBlasPassCpu();
 }
 #endif
 
