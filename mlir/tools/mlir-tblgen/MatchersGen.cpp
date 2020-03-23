@@ -10,9 +10,10 @@ using mlir::tblgen::Operator;
 
 #define DEBUG_TYPE "mlir-tblgen-tactics"
 
-static llvm::cl::opt<bool> clEmitBlas("emit-blas",
-                                      llvm::cl::desc("directly emit blas call"),
-                                      llvm::cl::init(false));
+static llvm::cl::opt<bool>
+    clEmitBlasCpu("emit-blas-cpu",
+                  llvm::cl::desc("directly emit blas call for cpu"),
+                  llvm::cl::init(false));
 
 namespace llvm {
 using identifierLine = std::pair<StringRef, unsigned>;
@@ -99,7 +100,7 @@ void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
          "matvec must not create a new buffer - in-place operation");
   auto lookupInputOperands = getInputOperands();
   assert((lookupInputOperands.size() == 2) && "expect 2 args for matvec");
-  if (!clEmitBlas)
+  if (!clEmitBlasCpu)
     os << "assert(0);\n";
   else
     emitMatvecBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff);
@@ -110,7 +111,7 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
          "matmul must not emit a new buffer - in-place computation");
   auto lookupInputOperands = getInputOperands();
   assert((lookupInputOperands.size() == 2) && "expect 2 args for matmul");
-  if (!clEmitBlas) {
+  if (!clEmitBlasCpu) {
     emitMatmulHelpers(lookupInputOperands[0], lookupInputOperands[1], destBuff);
     os << record_->getValueAsString("body");
   } else
@@ -194,7 +195,7 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
 }
 
 void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
-  if (!clEmitBlas) {
+  if (!clEmitBlasCpu) {
     emitTransposeHelpers();
     os << record_->getValueAsString("body");
     os << formatv(
@@ -247,7 +248,7 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
 }
 
 void BuilderEmitter::emitReshape(bool isEmitted, std::string destBuff) {
-  if (!clEmitBlas)
+  if (!clEmitBlasCpu)
     os << "assert(0);\n";
   else
     emitReshapeBlas(isEmitted, destBuff);
@@ -737,10 +738,10 @@ static mlir::GenRegistration
                         return false;
                       });
 static mlir::GenRegistration
-    genMatchersBlas("gen-tactics-blas-cpu",
-                    "Generate tactics for blas calls on cpu",
-                    [](const RecordKeeper &records, raw_ostream &os) {
-                      clEmitBlas = true;
-                      emitMatchersRewriters(records, os);
-                      return false;
-                    });
+    genMatchersBlasCpu("gen-tactics-blas-cpu",
+                       "Generate tactics for blas calls on cpu",
+                       [](const RecordKeeper &records, raw_ostream &os) {
+                         clEmitBlasCpu = true;
+                         emitMatchersRewriters(records, os);
+                         return false;
+                       });
