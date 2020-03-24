@@ -1,7 +1,7 @@
 #ifndef HELPERS_GENERATION_TACTICS_GPU
 #define HELPERS_GENERATION_TACTICS_GPU
 
-#include "Helpers.h"
+#include "HelpersCommon.h"
 
 /*
   Helpers for tablegen backend code generation - gpu path
