@@ -19,6 +19,10 @@
 #include "dnnl.hpp"
 using namespace dnnl;
 
+// CUDA runtime
+#include <cublas_v2.h>
+#include <cuda_runtime.h>
+
 extern "C" void
 _mlir_ciface_linalg_fill_viewf32_f32(StridedMemRefType<float, 0> *X, float f) {
   X->data[X->offset] = f;
@@ -505,4 +509,81 @@ extern "C" void _mlir_ciface_matmul_32x32x64(StridedMemRefType<float, 2> *C,
                                              StridedMemRefType<float, 2> *A,
                                              StridedMemRefType<float, 2> *B) {
   matmulBlas(C, A, B);
+}
+
+extern "C" void *_mlir_ciface_allocateMemoryForDevice(int64_t size) {
+  std::cout << __func__ << "\n";
+  cudaError_t error;
+  cudaDeviceProp deviceProp;
+  int devId = 0;
+
+  error = cudaGetDeviceProperties(&deviceProp, devId);
+  if (error != cudaSuccess) {
+    std::cout << "failure!\n";
+    assert(0);
+  }
+  std::cout << deviceProp.name << "\n";
+  std::cout << deviceProp.major << "\n";
+  std::cout << deviceProp.minor << "\n";
+
+  void *d_A;
+  error = cudaMalloc((void **)&d_A, size);
+  if (error != cudaSuccess) {
+    std::cout << "failure\n";
+    assert(0);
+  }
+  return d_A;
+}
+
+extern "C" void
+_mlir_ciface_createCallCopyFromHostToDevice(StridedMemRefType<float, 2> *S,
+                                            void *D, int64_t size) {
+  std::cout << __func__ << "\n";
+  cudaError_t error;
+  error = cudaMemcpy(D, S->data, size, cudaMemcpyHostToDevice);
+  if (error != cudaSuccess) {
+    std::cout << "failure\n";
+    assert(0);
+  }
+}
+
+// TODO: use memref to compute lda, ldb, ldc, N, M, K.
+extern "C" void
+_mlir_ciface_createCallToCublasSgemm(void *C, void *A, void *B,
+                                     StridedMemRefType<float, 2> *CMemref,
+                                     StridedMemRefType<float, 2> *AMemref,
+                                     StridedMemRefType<float, 2> *BMemref) {
+  std::cout << __func__ << "\n";
+  cublasStatus_t error;
+  cublasHandle_t handle;
+  error = cublasCreate(&handle);
+  if (error != CUBLAS_STATUS_SUCCESS) {
+    std::cout << "failure\n";
+    assert(0);
+  }
+
+  float alpha = 1.0;
+  float beta = 1.0;
+  for (size_t i = 0; i < 1; i++) {
+    error = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 1024, 1024, 1024,
+                        &alpha, (float *)B, 1024, (float *)A, 1024, &beta,
+                        (float *)C, 1024);
+    if (error != CUBLAS_STATUS_SUCCESS) {
+      std::cout << "failure\n";
+      assert(0);
+    }
+  }
+
+  cublasDestroy(handle);
+}
+
+extern "C" void _mlir_ciface_createCallCopyFromDeviceToHost(
+    void *S, StridedMemRefType<float, 2> *D, int64_t size) {
+  std::cout << __func__ << std::endl;
+  cudaError_t error;
+  error = cudaMemcpy(D->data, S, size, cudaMemcpyDeviceToHost);
+  if (error != cudaSuccess) {
+    std::cout << "failure\n";
+    assert(0);
+  }
 }
