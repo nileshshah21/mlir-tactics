@@ -32,6 +32,7 @@ if (CUDAToolkit_FOUND)
   # include and link
   include_directories(${CUDAToolkit_INCLUDE_DIRS})
   target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cublas)
+  target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cudart)
   # add def
   add_definitions(-DHAS_CUBLAS)
 endif()
