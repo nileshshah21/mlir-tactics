@@ -37,6 +37,7 @@ set(LIBS
   MLIRTestTactics
   MLIRTestTacticsLinalg
   MLIRTestTacticsBlasCpu
+  MLIRTestTacticsBlasGpu
   MLIRSupport
   MLIRIR
   )

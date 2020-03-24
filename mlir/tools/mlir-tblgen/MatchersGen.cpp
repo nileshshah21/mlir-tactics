@@ -14,6 +14,10 @@ static llvm::cl::opt<bool>
     clEmitBlasCpu("emit-blas-cpu",
                   llvm::cl::desc("directly emit blas call for cpu"),
                   llvm::cl::init(false));
+static llvm::cl::opt<bool>
+    clEmitBlasGpu("emit-blas-gpu",
+                  llvm::cl::desc("directly emit blas call for gpu"),
+                  llvm::cl::init(false));
 
 namespace llvm {
 using identifierLine = std::pair<StringRef, unsigned>;
@@ -53,10 +57,13 @@ void BuilderEmitter::emitMatmulHelpers(std::string A, std::string B,
 // TODO: check how to properly escape { and }
 // https://llvm.org/doxygen/FormatVariadic_8h_source.html
 // mlir::Type{{} does not make a lot of sense.
-void BuilderEmitter::emitMatmulBlas(std::string A, std::string B,
-                                    std::string C) {
-  os << formatv(
-      R"(
+void BuilderEmitter::emitMatmulBlas(std::string A, std::string B, std::string C,
+                                    Target t) {
+  // TODO: wrap the methods in a function "createXX" as done for the GPU path.
+  switch (t) {
+  case Target::CPU: {
+    os << formatv(
+        R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
     auto fn = composeFunctionCallName(FUNCTION::MATMUL,
       llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
@@ -65,7 +72,31 @@ void BuilderEmitter::emitMatmulBlas(std::string A, std::string B,
     rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
       llvm::ArrayRef<mlir::Value>{ {0}, {1}, {2} }); 
     )",
-      C, A, B);
+        C, A, B);
+    return;
+  }
+  case Target::GPU: {
+    os << formatv(
+        R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+    auto devC = createCallAllocateMemoryForDevice(module, rewriter, op.getLoc(), getSizeBuffer({0}.getType()));
+    auto devA = createCallAllocateMemoryForDevice(module, rewriter, op.getLoc(), getSizeBuffer({1}.getType()));
+    auto devB = createCallAllocateMemoryForDevice(module, rewriter, op.getLoc(), getSizeBuffer({2}.getType())); 
+    createCallCopyFromHostToDevice(module, rewriter, op.getLoc(), {0}, devC, 
+                                   getSizeBuffer({0}.getType()));
+    createCallCopyFromHostToDevice(module, rewriter, op.getLoc(), {1}, devA, 
+                                   getSizeBuffer({1}.getType()));
+    createCallCopyFromHostToDevice(module, rewriter, op.getLoc(), {2}, devB, 
+                                   getSizeBuffer({2}.getType()));
+    createCallToCublasSgemm(module, rewriter, op.getLoc(), devC, devA, devB, {0}, {1}, {2});
+    createCallCopyFromDeviceToHost(module, rewriter, op.getLoc(), devC, {0}, 
+                                   getSizeBuffer({0}.getType()));    
+    )",
+        C, A, B);
+    return;
+  }
+    assert(0 && "case not supported for emitMatmulBlas");
+  }
 }
 
 void BuilderEmitter::emitMatvecBlas(std::string A, std::string x,
@@ -111,11 +142,19 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
          "matmul must not emit a new buffer - in-place computation");
   auto lookupInputOperands = getInputOperands();
   assert((lookupInputOperands.size() == 2) && "expect 2 args for matmul");
-  if (!clEmitBlasCpu) {
-    emitMatmulHelpers(lookupInputOperands[0], lookupInputOperands[1], destBuff);
-    os << record_->getValueAsString("body");
-  } else
-    emitMatmulBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff);
+  if (clEmitBlasGpu) {
+    emitMatmulBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff,
+                   Target::GPU);
+    return;
+  }
+  if (clEmitBlasCpu) {
+    emitMatmulBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff,
+                   Target::CPU);
+    return;
+  }
+  // linalg.
+  emitMatmulHelpers(lookupInputOperands[0], lookupInputOperands[1], destBuff);
+  os << record_->getValueAsString("body");
 }
 
 void BuilderEmitter::emitTransposeHelpers() {
@@ -742,6 +781,14 @@ static mlir::GenRegistration
                        "Generate tactics for blas calls on cpu",
                        [](const RecordKeeper &records, raw_ostream &os) {
                          clEmitBlasCpu = true;
+                         emitMatchersRewriters(records, os);
+                         return false;
+                       });
+static mlir::GenRegistration
+    genMatchersBlasGpu("gen-tactics-blas-gpu",
+                       "Generate tactics for blas calls in gpu",
+                       [](const RecordKeeper &records, raw_ostream &os) {
+                         clEmitBlasGpu = true;
                          emitMatchersRewriters(records, os);
                          return false;
                        });
