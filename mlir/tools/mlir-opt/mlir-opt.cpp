@@ -70,6 +70,7 @@ void registerTestVectorConversions();
 void registerVectorizerTestPass();
 void registerTacticsTestLinalgPass();
 void registerTacticsTestBlasPassCpu();
+void registerTacticsTestBlasPassGpu();
 } // namespace mlir
 
 static cl::opt<std::string>
@@ -147,6 +148,7 @@ void registerTestPasses() {
   registerVectorizerTestPass();
   registerTacticsTestLinalgPass();
   registerTacticsTestBlasPassCpu();
+  registerTacticsTestBlasPassGpu();
 }
 #endif
 
