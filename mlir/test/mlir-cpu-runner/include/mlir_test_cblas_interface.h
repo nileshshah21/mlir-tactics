@@ -227,4 +227,22 @@ _mlir_ciface_matmul_32x32x64(StridedMemRefType<float, 2> *C,
                              StridedMemRefType<float, 2> *A,
                              StridedMemRefType<float, 2> *B);
 
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void *
+_mlir_ciface_allocateMemoryForDevice(int64_t size);
+
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_createCallCopyFromHostToDevice(StridedMemRefType<float, 2> *S,
+                                            void *D, int64_t size);
+
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_createCallToCublasSgemm(void *C, void *A, void *B,
+                                     StridedMemRefType<float, 2> *CMemref,
+                                     StridedMemRefType<float, 2> *AMemref,
+                                     StridedMemRefType<float, 2> *BMemref);
+
+extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_createCallCopyFromDeviceToHost(void *S,
+                                            StridedMemRefType<float, 2> *D,
+                                            int64_t size);
+
 #endif // MLIR_CPU_RUNNER_CBLAS_INTERFACE_H_
