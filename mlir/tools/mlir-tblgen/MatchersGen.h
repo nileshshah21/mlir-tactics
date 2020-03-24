@@ -18,6 +18,9 @@
 namespace mlir {
 
 namespace {
+
+enum class Target { CPU, GPU };
+
 class SymbolTableMap {
 public:
   SymbolTableMap() : nextId_(0){};
@@ -55,7 +58,7 @@ private:
   // matmul builders/helpers.
   void emitMatmul(bool isEmitted, std::string destBuff);
   void emitMatmulHelpers(std::string A, std::string B, std::string C);
-  void emitMatmulBlas(std::string A, std::string B, std::string C);
+  void emitMatmulBlas(std::string A, std::string B, std::string C, Target t);
 
   // transpose builders/helpers.
   void emitTranspose(bool isEmitted, std::string destBuff);
