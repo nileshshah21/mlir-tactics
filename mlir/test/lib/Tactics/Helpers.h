@@ -201,12 +201,13 @@ std::string composeFunctionCallName(FUNCTION id, const Args... args) {
 mlir::FlatSymbolRefAttr
 getOrInsertFunction(mlir::PatternRewriter &rewriter, mlir::ModuleOp module,
                     std::string fName,
-                    const llvm::ArrayRef<mlir::Type> &types) {
+                    const llvm::ArrayRef<mlir::Type> typeOperands,
+                    const llvm::ArrayRef<mlir::Type> typeResults = {}) {
   auto *context = module.getContext();
   if (module.lookupSymbol(fName))
     return mlir::SymbolRefAttr::get(fName, context);
   auto libFnInfoType =
-      mlir::FunctionType::get(types, {}, rewriter.getContext());
+      mlir::FunctionType::get(typeOperands, typeResults, rewriter.getContext());
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(module.getBody(),
                              std::prev(module.getBody()->end()));
