@@ -188,7 +188,7 @@ std::string composeFunctionCallName(FUNCTION id, const Args... args) {
 // the permutation array.
 mlir::Value
 getPermutationSizeAsConstantOp(mlir::Location loc, mlir::OpBuilder &builder,
-                               const llvm::ArrayRef<int64_t> permutation,
+                               const llvm::ArrayRef<int> &permutation,
                                mlir::LLVM::LLVMDialect *llvmDialect) {
   auto llvmInt32Type = mlir::LLVM::LLVMType::getInt32Ty(llvmDialect);
   mlir::Value size = builder.create<mlir::LLVM::ConstantOp>(
@@ -197,12 +197,79 @@ getPermutationSizeAsConstantOp(mlir::Location loc, mlir::OpBuilder &builder,
 }
 
 // return a unique name for the permuation array.
-std::string getPermutationArrayName(llvm::ArrayRef<int> perm) {
+std::string getPermutationArrayName(const llvm::ArrayRef<int> &perm) {
   std::string res = "permutation_";
   for (size_t i = 0; i < perm.size() - 1; i++)
     res += std::to_string(perm[i]) + "x";
   res += std::to_string(perm[perm.size() - 1]);
   return res;
+}
+
+// create a function call to mkl sgemm. Declare the function if not already
+// in the module.
+void createCallToMklSgemm(mlir::ModuleOp module,
+                          mlir::PatternRewriter &rewriter, mlir::Location loc,
+                          mlir::Value C, mlir::Value A, mlir::Value B) {
+  auto fn = composeFunctionCallName(
+      FUNCTION::MATMUL,
+      llvm::ArrayRef<mlir::Type>{C.getType(), A.getType(), B.getType()});
+  auto symbolFn = getOrInsertFunction(
+      rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{C.getType(), A.getType(), B.getType()});
+  rewriter.create<mlir::CallOp>(loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
+                                llvm::ArrayRef<mlir::Value>{C, A, B});
+}
+
+// create a function call to mkl sgemv. Declare the function if not already
+// in the module.
+void createCallToMklSgemv(mlir::ModuleOp module,
+                          mlir::PatternRewriter &rewriter, mlir::Location loc,
+                          mlir::Value x, mlir::Value A, mlir::Value y) {
+  auto fn = composeFunctionCallName(
+      FUNCTION::MATVEC,
+      llvm::ArrayRef<mlir::Type>{x.getType(), A.getType(), y.getType()});
+  auto symbolFn = getOrInsertFunction(
+      rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{x.getType(), A.getType(), y.getType()});
+  rewriter.create<mlir::CallOp>(loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
+                                llvm::ArrayRef<mlir::Value>{x, A, y});
+}
+
+// create a function call to mkl rehsape. Declare the function if not already
+// in the module.
+void createCallToMklReshape(mlir::ModuleOp module,
+                            mlir::PatternRewriter &rewriter, mlir::Location loc,
+                            mlir::Value source, mlir::Value dest) {
+  auto fn = composeFunctionCallName(
+      FUNCTION::RESHAPE,
+      llvm::ArrayRef<mlir::Type>{source.getType(), dest.getType()});
+  auto symbolFn = getOrInsertFunction(
+      rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{source.getType(), dest.getType()});
+  rewriter.create<mlir::CallOp>(loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
+                                llvm::ArrayRef<mlir::Value>{source, dest});
+}
+
+// create a function call to mkl transpose. Declare the function if not already
+// in the module. Create a global array containing the permuation indexes.
+void createCallToMklTranspose(mlir::ModuleOp module,
+                              mlir::PatternRewriter &rewriter,
+                              mlir::Location loc, mlir::Value source,
+                              mlir::Value dest, llvm::ArrayRef<int> perm) {
+  auto fn = composeFunctionCallName(
+      FUNCTION::TRANSPOSE,
+      llvm::ArrayRef<mlir::Type>{source.getType(), dest.getType()});
+  auto *llvmDialect = getLLVMDialect(module);
+  auto global = getOrCreateGlobalArray(
+      loc, rewriter, getPermutationArrayName(perm), perm, module, llvmDialect);
+  auto size = getPermutationSizeAsConstantOp(loc, rewriter, perm, llvmDialect);
+  auto symbolFn = getOrInsertFunction(
+      rewriter, module, fn,
+      llvm::ArrayRef<mlir::Type>{source.getType(), dest.getType(),
+                                 global.getType(), size.getType()});
+  rewriter.create<mlir::CallOp>(
+      loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
+      llvm::ArrayRef<mlir::Value>{source, dest, global, size});
 }
 
 } // end namespace
