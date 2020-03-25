@@ -227,6 +227,7 @@ _mlir_ciface_matmul_32x32x64(StridedMemRefType<float, 2> *C,
                              StridedMemRefType<float, 2> *A,
                              StridedMemRefType<float, 2> *B);
 
+#ifdef HAS_GPU_SUPPORT
 extern "C" MLIR_CBLAS_INTERFACE_EXPORT void *
 _mlir_ciface_allocateMemoryForDevice(int64_t size);
 
@@ -244,5 +245,6 @@ extern "C" MLIR_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_createCallCopyFromDeviceToHost(void *S,
                                             StridedMemRefType<float, 2> *D,
                                             int64_t size);
+#endif // HAS_GPU_SUPPORT
 
 #endif // MLIR_CPU_RUNNER_CBLAS_INTERFACE_H_

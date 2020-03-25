@@ -19,9 +19,10 @@
 #include "dnnl.hpp"
 using namespace dnnl;
 
-// CUDA runtime
+#ifdef HAS_GPU_SUPPORT
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
+#endif
 
 extern "C" void
 _mlir_ciface_linalg_fill_viewf32_f32(StridedMemRefType<float, 0> *X, float f) {
@@ -511,6 +512,9 @@ extern "C" void _mlir_ciface_matmul_32x32x64(StridedMemRefType<float, 2> *C,
   matmulBlas(C, A, B);
 }
 
+// GPU - Support
+
+#ifdef HAS_GPU_SUPPORT
 extern "C" void *_mlir_ciface_allocateMemoryForDevice(int64_t size) {
   std::cout << __func__ << "\n";
   cudaError_t error;
@@ -587,3 +591,4 @@ extern "C" void _mlir_ciface_createCallCopyFromDeviceToHost(
     assert(0);
   }
 }
+#endif
