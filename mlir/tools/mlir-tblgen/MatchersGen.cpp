@@ -54,23 +54,14 @@ void BuilderEmitter::emitMatmulHelpers(std::string A, std::string B,
       C, A, B);
 }
 
-// TODO: check how to properly escape { and }
-// https://llvm.org/doxygen/FormatVariadic_8h_source.html
-// mlir::Type{{} does not make a lot of sense.
 void BuilderEmitter::emitMatmulBlas(std::string A, std::string B, std::string C,
                                     Target t) {
-  // TODO: wrap the methods in a function "createXX" as done for the GPU path.
   switch (t) {
   case Target::CPU: {
     os << formatv(
         R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
-    auto fn = composeFunctionCallName(FUNCTION::MATMUL,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
-    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
-    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
-      llvm::ArrayRef<mlir::Value>{ {0}, {1}, {2} }); 
+    createCallToMklSgemm(module, rewriter, op.getLoc(), {0}, {1}, {2});
     )",
         C, A, B);
     return;
@@ -104,12 +95,7 @@ void BuilderEmitter::emitMatvecBlas(std::string A, std::string x,
   os << formatv(
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
-    auto fn = composeFunctionCallName(FUNCTION::MATVEC,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
-    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), {1}.getType(), {2}.getType() });
-    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
-      llvm::ArrayRef<mlir::Value>{ {0}, {1}, {2} }); 
+    createCallToMklSgemv(module, rewriter, op.getLoc(), {0}, {1}, {2});
     )",
       x, A, y);
 }
@@ -200,13 +186,8 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
   )");
-  if (!isEmitted) {
-    os << formatv(
-        R"(
-    auto tType = {0}.getType().dyn_cast<mlir::MemRefType>();
-    )",
-        destBuff);
-  } else {
+
+  if (isEmitted) {
     os << formatv(
         R"(
     auto tType = getTransposedMemref(
@@ -217,18 +198,7 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
   }
   os << formatv(
       R"(
-    auto fn = composeFunctionCallName(FUNCTION::TRANSPOSE,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType });
-    auto *llvmDialect = op.getContext()->getRegisteredDialect<mlir::LLVM::LLVMDialect>();
-    assert(llvmDialect && "expected llvm dialect to be registered");
-    auto global = getOrCreateGlobalArray(op.getLoc(), rewriter, getPermutationArrayName( {1} ),
-      {1}, module, llvmDialect);
-    mlir::Value permutationSize = 
-      getPermutationSizeAsConstantOp(op.getLoc(), rewriter, {1}, llvmDialect ); 
-    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType, global.getType(), permutationSize.getType() });
-    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
-      llvm::ArrayRef<mlir::Value>{ {0}, {2}, global, permutationSize });
+    createCallToMklTranspose(module, rewriter, op.getLoc(), {0}, {2}, {1}); 
   )",
       lookupInputOperand[0], permutation, destBuff);
 }
@@ -259,13 +229,8 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
   )");
-  if (!isEmitted) {
-    os << formatv(
-        R"(
-    auto tType = {0}.getType().dyn_cast<mlir::MemRefType>();
-    )",
-        destBuff);
-  } else {
+
+  if (isEmitted) {
     os << formatv(
         R"(
     auto tType = getReshapedMemRef(
@@ -276,12 +241,7 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
   }
   os << formatv(
       R"(
-    auto fn = composeFunctionCallName(FUNCTION::RESHAPE,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType});
-    auto symbolFn = getOrInsertFunction(rewriter, module, fn,
-      llvm::ArrayRef<mlir::Type>{ {0}.getType(), tType});
-    rewriter.create<mlir::CallOp>(op.getLoc(), symbolFn, llvm::ArrayRef<mlir::Type>{{},
-      llvm::ArrayRef<mlir::Value>{ {0}, {1} });
+    createCallToMklReshape(module, rewriter, op.getLoc(), {0}, {1}); 
   )",
       lookupInputOperand[0], destBuff);
 }
