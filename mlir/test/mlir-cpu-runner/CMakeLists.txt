@@ -34,6 +34,6 @@ if (CUDAToolkit_FOUND)
   target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cublas)
   target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cudart)
   # add def
-  add_definitions(-DHAS_CUBLAS)
+  add_definitions(-DHAS_GPU_SUPPORT)
 endif()
 
