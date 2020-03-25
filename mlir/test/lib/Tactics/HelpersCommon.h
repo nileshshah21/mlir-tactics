@@ -21,6 +21,14 @@
 
 namespace {
 
+// get the LLVM dialect.
+mlir::LLVM::LLVMDialect *getLLVMDialect(mlir::ModuleOp module) {
+  auto *context = module.getContext();
+  auto *llvmDialect = context->getRegisteredDialect<mlir::LLVM::LLVMDialect>();
+  assert(llvmDialect && "expected llvm dialect to be registered");
+  return llvmDialect;
+}
+
 // insert a symbol reference to "fName", inserting it into the module
 // if necessary.
 mlir::FlatSymbolRefAttr

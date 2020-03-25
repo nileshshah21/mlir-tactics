@@ -24,14 +24,6 @@ int64_t getSizeBuffer(mlir::Type bufferType) {
   return totalSize;
 }
 
-// get the LLVM dialect.
-mlir::LLVM::LLVMDialect *getLLVMDialect(mlir::ModuleOp module) {
-  auto *context = module.getContext();
-  auto *llvmDialect = context->getRegisteredDialect<mlir::LLVM::LLVMDialect>();
-  assert(llvmDialect && "expected llvm dialect to be registered");
-  return llvmDialect;
-}
-
 // create a function to allocate memory on the device.
 // The created function looks like:
 //
