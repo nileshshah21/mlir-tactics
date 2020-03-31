@@ -19,6 +19,22 @@ namespace mlir {
 
 namespace {
 
+// handy function to manipulate
+// tablegen entries for the matmul builder.
+class MatmulBlasEntry {
+public:
+  explicit MatmulBlasEntry(llvm::Record *record) : record_(record) {}
+  int64_t alpha() const;
+  int64_t beta() const;
+  llvm::StringRef transA() const;
+  llvm::StringRef transB() const;
+  std::vector<llvm::StringRef> inputs() const;
+  llvm::StringRef outputs() const;
+
+private:
+  llvm::Record *record_;
+};
+
 enum class Target { CPU, GPU };
 
 class SymbolTableMap {
@@ -49,16 +65,18 @@ private:
   // get field with id "id". In the long run
   // if the classes in tablegen get more complicated
   // we can have simple wrapper around them.
+  // TODO: remove me.
   std::vector<StringRef> getField(StringRef id);
 
   void emitPreamble(bool &isEmitted, std::string &dest);
   void emitPostamble();
+  // TODO: remove me.
   SmallVector<std::string, 3> getInputOperands();
 
   // matmul builders/helpers.
   void emitMatmul(bool isEmitted, std::string destBuff);
-  void emitMatmulHelpers(std::string A, std::string B, std::string C);
-  void emitMatmulBlas(std::string A, std::string B, std::string C, Target t);
+  void emitMatmulLinalgHelpers(std::string destBuff);
+  void emitMatmulBlas(std::string destBuff, Target t);
 
   // transpose builders/helpers.
   void emitTranspose(bool isEmitted, std::string destBuff);

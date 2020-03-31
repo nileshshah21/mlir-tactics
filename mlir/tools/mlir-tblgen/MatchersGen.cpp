@@ -34,6 +34,41 @@ thread_local SymbolTableMap BuilderEmitter::symbolTable_;
 BuilderEmitter::BuilderEmitter(Record *record, raw_ostream &os)
     : record_(record), os(os){};
 
+int64_t MatmulBlasEntry::alpha() const {
+  auto record = record_->getValueAsDef("alpha");
+  return record->getValueAsInt("valueConstant");
+}
+
+int64_t MatmulBlasEntry::beta() const {
+  auto record = record_->getValueAsDef("beta");
+  return record->getValueAsInt("valueConstant");
+}
+
+StringRef MatmulBlasEntry::transA() const {
+  auto record = record_->getValueAsDef("transA");
+  return record->getValueAsString("trans");
+}
+
+StringRef MatmulBlasEntry::transB() const {
+  auto record = record_->getValueAsDef("transB");
+  return record->getValueAsString("trans");
+}
+
+std::vector<llvm::StringRef> MatmulBlasEntry::inputs() const {
+  auto record = record_->getValueAsDef("inputs");
+  auto res = record->getValueAsListOfStrings("inputs");
+  assert(res.size() == 2 && "expect two inputs for matmul");
+  return res;
+}
+
+StringRef MatmulBlasEntry::outputs() const {
+  auto res = record_->getValueAsListOfStrings("outputs");
+  assert(res.size() == 1 && "expect one output for matmul");
+  return res[0];
+}
+
+// TODO: remove me (prefer the interface method as done for
+// matmul).
 std::vector<StringRef> BuilderEmitter::getField(StringRef id) {
   auto record = record_->getValueAsDef(id);
   if (id.equals("affineExpr")) {
@@ -43,8 +78,20 @@ std::vector<StringRef> BuilderEmitter::getField(StringRef id) {
   return record->getValueAsListOfStrings(id);
 }
 
-void BuilderEmitter::emitMatmulHelpers(std::string A, std::string B,
-                                       std::string C) {
+void BuilderEmitter::emitMatmulLinalgHelpers(std::string destBuff) {
+  auto matmulEntry = MatmulBlasEntry(record_);
+  auto inputs = matmulEntry.inputs();
+  // lookup the inputs.
+  SmallVector<std::string, 2> lookupOperands;
+  std::string lookupName;
+  for (const auto &input : inputs) {
+    if (!symbolTable_.lookup(input.str(), lookupName))
+      llvm_unreachable("cannot find symbol");
+    lookupOperands.push_back(lookupName);
+  }
+  auto C = destBuff;
+  auto A = lookupOperands[0];
+  auto B = lookupOperands[1];
   os << formatv(
       R"(
     auto getOperandFromParamsMatmul = [&]() {
@@ -54,16 +101,34 @@ void BuilderEmitter::emitMatmulHelpers(std::string A, std::string B,
       C, A, B);
 }
 
-void BuilderEmitter::emitMatmulBlas(std::string A, std::string B, std::string C,
-                                    Target t) {
+void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
+  auto matmulEntry = MatmulBlasEntry(record_);
+  auto alpha = matmulEntry.alpha();
+  auto beta = matmulEntry.beta();
+  auto transA = (matmulEntry.transA() == "N") ? false : true;
+  auto transB = (matmulEntry.transB() == "N") ? false : true;
+  auto inputs = matmulEntry.inputs();
+
+  // lookup the inputs.
+  SmallVector<std::string, 2> lookupOperands;
+  std::string lookupName;
+  for (const auto &input : inputs) {
+    if (!symbolTable_.lookup(input.str(), lookupName))
+      llvm_unreachable("cannot find symbol");
+    lookupOperands.push_back(lookupName);
+  }
+  auto C = destBuff;
+  auto A = lookupOperands[0];
+  auto B = lookupOperands[1];
+
   switch (t) {
   case Target::CPU: {
     os << formatv(
         R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
-    createCallToMklSgemm(module, rewriter, op.getLoc(), {0}, {1}, {2});
+    createCallToMklSgemm(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4}, {5}, {6});
     )",
-        C, A, B);
+        C, A, B, alpha, beta, transA, transB);
     return;
   }
   case Target::GPU: {
@@ -100,6 +165,7 @@ void BuilderEmitter::emitMatvecBlas(std::string A, std::string x,
       x, A, y);
 }
 
+// TODO: remove me, prefer entry class as done for matmul.
 SmallVector<std::string, 3> BuilderEmitter::getInputOperands() {
   auto inputs = getField("inputs");
   SmallVector<std::string, 3> lookupOperands;
@@ -126,20 +192,16 @@ void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
 void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
   assert((isEmitted == false) &&
          "matmul must not emit a new buffer - in-place computation");
-  auto lookupInputOperands = getInputOperands();
-  assert((lookupInputOperands.size() == 2) && "expect 2 args for matmul");
   if (clEmitBlasGpu) {
-    emitMatmulBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff,
-                   Target::GPU);
+    emitMatmulBlas(destBuff, Target::GPU);
     return;
   }
   if (clEmitBlasCpu) {
-    emitMatmulBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff,
-                   Target::CPU);
+    emitMatmulBlas(destBuff, Target::CPU);
     return;
   }
   // linalg.
-  emitMatmulHelpers(lookupInputOperands[0], lookupInputOperands[1], destBuff);
+  emitMatmulLinalgHelpers(destBuff);
   os << record_->getValueAsString("body");
 }
 
