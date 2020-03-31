@@ -37,8 +37,7 @@ func @contraction.ab.ac.cd(%A: memref<1024x1024xf32>, %B: memref<1024x1024xf32>,
 }
 
 func @contraction.ab.ca.cd(%A: memref<3x5xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf32>) {
-  // CHECK: @transpose_3x5_to_5x3
-  // CHECK-NEXT: @matmul_5x6x3
+  // CHECK: @matmul_5x6x5
   // CHECK-NEXT: return
   affine.for %i = 0 to 5 {
     affine.for %j = 0 to 6 {
