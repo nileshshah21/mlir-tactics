@@ -44,6 +44,21 @@ int64_t MatmulBlasEntry::beta() const {
   return record->getValueAsInt("valueConstant");
 }
 
+int64_t MatmulBlasEntry::dimensionForM() const {
+  auto record = record_->getValueAsDef("m");
+  return record->getValueAsInt("value");
+}
+
+int64_t MatmulBlasEntry::dimensionForN() const {
+  auto record = record_->getValueAsDef("n");
+  return record->getValueAsInt("value");
+}
+
+int64_t MatmulBlasEntry::dimensionForK() const {
+  auto record = record_->getValueAsDef("k");
+  return record->getValueAsInt("value");
+}
+
 StringRef MatmulBlasEntry::transA() const {
   auto record = record_->getValueAsDef("transA");
   return record->getValueAsString("trans");
@@ -105,6 +120,9 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
   auto matmulEntry = MatmulBlasEntry(record_);
   auto alpha = matmulEntry.alpha();
   auto beta = matmulEntry.beta();
+  auto dimForM = matmulEntry.dimensionForM();
+  auto dimForN = matmulEntry.dimensionForN();
+  auto dimForK = matmulEntry.dimensionForK();
   auto transA = (matmulEntry.transA() == "N") ? false : true;
   auto transB = (matmulEntry.transB() == "N") ? false : true;
   auto inputs = matmulEntry.inputs();
@@ -126,9 +144,9 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
     os << formatv(
         R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
-    createCallToMklSgemm(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4}, {5}, {6});
+    createCallToMklSgemm(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9});
     )",
-        C, A, B, alpha, beta, transA, transB);
+        C, A, B, alpha, beta, transA, transB, dimForM, dimForN, dimForK);
     return;
   }
   case Target::GPU: {

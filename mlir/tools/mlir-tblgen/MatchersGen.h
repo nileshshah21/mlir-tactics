@@ -26,6 +26,9 @@ public:
   explicit MatmulBlasEntry(llvm::Record *record) : record_(record) {}
   int64_t alpha() const;
   int64_t beta() const;
+  int64_t dimensionForM() const;
+  int64_t dimensionForN() const;
+  int64_t dimensionForK() const;
   llvm::StringRef transA() const;
   llvm::StringRef transB() const;
   std::vector<llvm::StringRef> inputs() const;
