@@ -144,8 +144,9 @@ extern "C" void _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
       B->strides[0], 1.0f, C->data + C->offset, C->strides[0]);
 }
 
-void matmulBlas(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *A,
-                StridedMemRefType<float, 2> *B) {
+void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
+                StridedMemRefType<float, 2> *A, StridedMemRefType<float, 2> *B,
+                int alpha, int beta) {
   if (A->strides[1] != B->strides[1] || A->strides[1] != C->strides[1] ||
       A->strides[1] != 1 || A->sizes[0] < A->strides[1] ||
       B->sizes[0] < B->strides[1] || C->sizes[0] < C->strides[1] ||
@@ -170,23 +171,35 @@ void matmulBlas(StridedMemRefType<float, 2> *C, StridedMemRefType<float, 2> *A,
   size_t ldb = N;
   size_t ldc = N;
 
-  auto res =
-      dnnl_sgemm('N', 'N', M, N, K, 1.0, A->data + A->offset, lda,
-                 B->data + B->offset, ldb, 1.0, C->data + C->offset, ldc);
+  char isTransA = (transA) ? 'T' : 'N';
+  char isTransB = (transB) ? 'T' : 'N';
+
+  auto res = dnnl_sgemm(isTransA, isTransB, M, N, K, (float)alpha,
+                        A->data + A->offset, lda, B->data + B->offset, ldb,
+                        (float)beta, C->data + C->offset, ldc);
   if (res != dnnl_success)
     assert(0 && "dnnl_sgemm failed");
 }
 
-extern "C" void _mlir_ciface_matmul_42x42x42(StridedMemRefType<float, 2> *C,
+extern "C" void _mlir_ciface_matmul_42x42x42(int transA, int transB,
+                                             StridedMemRefType<float, 2> *C,
                                              StridedMemRefType<float, 2> *A,
-                                             StridedMemRefType<float, 2> *B) {
-  matmulBlas(C, A, B);
+                                             StridedMemRefType<float, 2> *B,
+                                             int64_t alpha, int64_t beta,
+                                             int64_t dimForM, int64_t dimForN,
+                                             int64_t dimForK) {
+  // no need for dimForM, N and K as the memref is 2d.
+  matmulBlas(transA, transB, C, A, B, alpha, beta);
 }
 
-extern "C" void _mlir_ciface_matmul_2x12x5(StridedMemRefType<float, 2> *C,
+extern "C" void _mlir_ciface_matmul_2x12x5(int transA, int transB,
+                                           StridedMemRefType<float, 2> *C,
                                            StridedMemRefType<float, 2> *A,
-                                           StridedMemRefType<float, 2> *B) {
-  matmulBlas(C, A, B);
+                                           StridedMemRefType<float, 2> *B,
+                                           int64_t alpha, int64_t beta,
+                                           int64_t dimForM, int64_t dimForN,
+                                           int64_t dimForK) {
+  matmulBlas(transA, transB, C, A, B, alpha, beta);
 }
 
 extern "C" void
@@ -341,10 +354,14 @@ _mlir_ciface_linalg_fill_view5x3x4xf32_f32(StridedMemRefType<float, 3> *X,
   _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(X, f);
 }
 
-extern "C" void _mlir_ciface_matmul_2x3x20(StridedMemRefType<float, 2> *C,
+extern "C" void _mlir_ciface_matmul_2x3x20(int transA, int transB,
+                                           StridedMemRefType<float, 2> *C,
                                            StridedMemRefType<float, 2> *A,
-                                           StridedMemRefType<float, 2> *B) {
-  matmulBlas(C, A, B);
+                                           StridedMemRefType<float, 2> *B,
+                                           int64_t alpha, int64_t beta,
+                                           int64_t dimForM, int64_t dimForN,
+                                           int64_t dimForK) {
+  matmulBlas(transA, transB, C, A, B, alpha, beta);
 }
 
 extern "C" void
@@ -374,11 +391,12 @@ _mlir_ciface_linalg_fill_view1024x1024xf32_f32(StridedMemRefType<float, 2> *X,
   _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
 }
 
-extern "C" void
-_mlir_ciface_matmul_1024x1024x1024(StridedMemRefType<float, 2> *C,
-                                   StridedMemRefType<float, 2> *A,
-                                   StridedMemRefType<float, 2> *B) {
-  matmulBlas(C, A, B);
+extern "C" void _mlir_ciface_matmul_1024x1024x1024(
+    int transA, int transB, StridedMemRefType<float, 2> *C,
+    StridedMemRefType<float, 2> *A, StridedMemRefType<float, 2> *B,
+    int64_t alpha, int64_t beta, int64_t dimForM, int64_t dimForN,
+    int64_t dimForK) {
+  matmulBlas(transA, transB, C, A, B, alpha, beta);
 }
 
 extern "C" void
@@ -506,10 +524,14 @@ _mlir_ciface_linalg_fill_view64x32xf32_f32(StridedMemRefType<float, 2> *X,
   _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
 }
 
-extern "C" void _mlir_ciface_matmul_32x32x64(StridedMemRefType<float, 2> *C,
+extern "C" void _mlir_ciface_matmul_32x32x64(int transA, int transB,
+                                             StridedMemRefType<float, 2> *C,
                                              StridedMemRefType<float, 2> *A,
-                                             StridedMemRefType<float, 2> *B) {
-  matmulBlas(C, A, B);
+                                             StridedMemRefType<float, 2> *B,
+                                             int64_t alpha, int64_t beta,
+                                             int64_t dimForM, int64_t dimForN,
+                                             int64_t dimForK) {
+  matmulBlas(transA, transB, C, A, B, alpha, beta);
 }
 
 // GPU - Support
