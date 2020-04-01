@@ -219,7 +219,8 @@ std::string getPermutationArrayName(const llvm::ArrayRef<int> &perm) {
 void createCallToMklSgemm(mlir::ModuleOp module,
                           mlir::PatternRewriter &rewriter, mlir::Location loc,
                           mlir::Value C, mlir::Value A, mlir::Value B,
-                          int64_t alpha, int64_t beta, int transA, int transB) {
+                          int64_t alpha, int64_t beta, int transA, int transB,
+                          int64_t dimForM, int64_t dimForN, int64_t dimForK) {
   auto i64Type = mlir::LLVM::LLVMType::getInt64Ty(getLLVMDialect(module));
   auto i32Type = mlir::LLVM::LLVMType::getInt32Ty(getLLVMDialect(module));
   // create alpha and beta.
@@ -227,6 +228,12 @@ void createCallToMklSgemm(mlir::ModuleOp module,
       loc, i64Type, rewriter.getI64IntegerAttr(alpha));
   mlir::Value betaV = rewriter.create<mlir::LLVM::ConstantOp>(
       loc, i64Type, rewriter.getI64IntegerAttr(beta));
+  mlir::Value dimForMV = rewriter.create<mlir::LLVM::ConstantOp>(
+      loc, i64Type, rewriter.getI64IntegerAttr(dimForM));
+  mlir::Value dimForNV = rewriter.create<mlir::LLVM::ConstantOp>(
+      loc, i64Type, rewriter.getI64IntegerAttr(dimForN));
+  mlir::Value dimForKV = rewriter.create<mlir::LLVM::ConstantOp>(
+      loc, i64Type, rewriter.getI64IntegerAttr(dimForK));
   // create TransA and TransB (as int).
   mlir::Value transAV = rewriter.create<mlir::LLVM::ConstantOp>(
       loc, i32Type, rewriter.getI32IntegerAttr(transA));
@@ -239,10 +246,12 @@ void createCallToMklSgemm(mlir::ModuleOp module,
   auto symbolFn = getOrInsertFunction(
       rewriter, module, fn,
       llvm::ArrayRef<mlir::Type>{i32Type, i32Type, C.getType(), A.getType(),
-                                 B.getType(), i64Type, i64Type});
+                                 B.getType(), i64Type, i64Type, i64Type,
+                                 i64Type, i64Type});
   rewriter.create<mlir::CallOp>(
       loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
-      llvm::ArrayRef<mlir::Value>{transAV, transBV, C, A, B, alphaV, betaV});
+      llvm::ArrayRef<mlir::Value>{transAV, transBV, C, A, B, alphaV, betaV,
+                                  dimForMV, dimForNV, dimForKV});
 }
 
 // create a function call to mkl sgemv. Declare the function if not already
