@@ -36,23 +36,23 @@ func @contraction.ab.ac.cd(%A: memref<1024x1024xf32>, %B: memref<1024x1024xf32>,
   return
 }
 
-func @contraction.ab.ca.cd(%A: memref<3x5xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf32>) {
-  // CHECK: @matmul_5x6x5
-  // CHECK-NEXT: return
-  affine.for %i = 0 to 5 {
-    affine.for %j = 0 to 6 {
-      affine.for %k = 0 to 3 {
-        %0 = affine.load %A[%k, %i] : memref<3x5xf32>
-        %1 = affine.load %B[%k, %j] : memref<3x6xf32>
-        %2 = affine.load %C[%i, %j] : memref<5x6xf32>
-        %3 = mulf %0, %1 : f32
-        %4 = addf %2, %3 : f32
-        affine.store %4, %C[%i, %j] : memref<5x6xf32>
-      }
-    }
-  }
-  return
-}
+//func @contraction.ab.ca.cd(%A: memref<3x5xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf32>) {
+//  [FIXME: expect matmul_5x6x3 but the generated label is 5x6x5 due to the
+//  fact that composeFunctionNameForMatmul does not know about transposition.
+//  affine.for %i = 0 to 5 {
+//    affine.for %j = 0 to 6 {
+//      affine.for %k = 0 to 3 {
+//        %0 = affine.load %A[%k, %i] : memref<3x5xf32>
+//        %1 = affine.load %B[%k, %j] : memref<3x6xf32>
+//        %2 = affine.load %C[%i, %j] : memref<5x6xf32>
+//        %3 = mulf %0, %1 : f32
+//        %4 = addf %2, %3 : f32
+//        affine.store %4, %C[%i, %j] : memref<5x6xf32>
+//      }
+//    }
+//  }
+//  return
+//}
 
 func @contraction.ab.acd.dbc(%C: memref<1024x1024xf32>, %A: memref<1024x32x32xf32>, %B: memref<32x1024x32xf32>) {
   // CHECK: @transpose_32x1024x32_to_32x32x1024
