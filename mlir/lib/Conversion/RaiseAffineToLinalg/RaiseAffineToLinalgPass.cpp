@@ -171,7 +171,7 @@ public:
       newOperands.push_back(operands[0]);
       newOperands.push_back(reshapedB);
       newOperands.push_back(reshapedC);
-      linalg_matmul(makeValueHandles(newOperands));
+      linalg_generic_matmul(makeValueHandles(newOperands));
     } else {
       // emit blas.
       auto operandA = operands[0];
@@ -462,7 +462,7 @@ public:
       newOperands.push_back(operands[0]);
       newOperands.push_back(reshapedB);
       newOperands.push_back(reshapedC);
-      linalg_matmul(makeValueHandles(newOperands)); // mul A * B += C
+      linalg_generic_matmul(makeValueHandles(newOperands)); // mul A * B += C
     }
     rewriter.eraseOp(op);
     return success();
@@ -578,7 +578,7 @@ public:
       using namespace edsc;
       using namespace edsc::ops;
       ScopedContext scop(rewriter, op->getLoc());
-      linalg_matmul(makeValueHandles(operands));
+      linalg_generic_matmul(makeValueHandles(operands));
     }
     rewriter.eraseOp(op);
     return success();
