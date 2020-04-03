@@ -45,36 +45,6 @@ static FlatSymbolRefAttr getOrInsertFunction(PatternRewriter &rewriter,
   return SymbolRefAttr::get(fName, context);
 }
 
-// return a value representing the access into a global array with
-// name "name", create the array if necessary.
-static Value getOrCreateGlobalArray(Location loc, OpBuilder &builder,
-                                    StringRef name,
-                                    SmallVector<int64_t, 4> &values,
-                                    ModuleOp module,
-                                    LLVM::LLVMDialect *llvmDialect) {
-  // create the global at the entry of the module.
-  LLVM::GlobalOp global;
-  if (!(global = module.lookupSymbol<LLVM::GlobalOp>(name))) {
-    OpBuilder::InsertionGuard insertGuard(builder);
-    builder.setInsertionPointToStart(module.getBody());
-    auto type = LLVM::LLVMType::getArrayTy(
-        LLVM::LLVMType::getInt8Ty(llvmDialect), values.size());
-    auto attr = builder.getI64ArrayAttr(values);
-    global =
-        builder.create<LLVM::GlobalOp>(loc, type, true, LLVM::Linkage::Internal,
-                                       name, builder.getArrayAttr(attr));
-  }
-
-  // Get the pointer to the first int in the global array.
-  Value globalPtr = builder.create<LLVM::AddressOfOp>(loc, global);
-  Value cst0 = builder.create<LLVM::ConstantOp>(
-      loc, LLVM::LLVMType::getInt64Ty(llvmDialect),
-      builder.getIntegerAttr(builder.getIndexType(), 0));
-  return builder.create<LLVM::GEPOp>(loc,
-                                     LLVM::LLVMType::getInt8PtrTy(llvmDialect),
-                                     globalPtr, ArrayRef<Value>({cst0, cst0}));
-}
-
 static SmallVector<int64_t, 8> applyPermutation(ArrayRef<int64_t> shape,
                                                 ArrayRef<int64_t> permutation) {
   assert((shape.size() == permutation.size()) && "must be equal");
@@ -179,13 +149,8 @@ public:
       auto operandBType = operands[1].getType();
       auto module = op->getParentOfType<ModuleOp>();
       auto f32Type = FloatType::getF32(module.getContext());
-      // auto *llvmDialect =
-      //    op->getContext()->getRegisteredDialect<LLVM::LLVMDialect>();
-      // create a global array representing the permutation.
+      // array representing the permutation.
       SmallVector<int64_t, 4> permutation = {1, 0, 2};
-      // Value permutationVar =
-      //    getOrCreateGlobalArray(op->getLoc(), rewriter, "permutation",
-      //                           permutation, module, llvmDialect);
       // create an output buffer for the transposition.
       auto transposedBType = getTransposedMemref(
           operandBType.dyn_cast<MemRefType>(), permutation, f32Type);
