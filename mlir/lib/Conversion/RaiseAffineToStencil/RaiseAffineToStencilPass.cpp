@@ -119,6 +119,3 @@ void RaiseAffineToStencilPass::runOnFunction() {
 std::unique_ptr<OpPassBase<FuncOp>> mlir::createRaiseAffineToStencilPass() {
   return std::make_unique<RaiseAffineToStencilPass>();
 }
-
-static PassRegistration<RaiseAffineToStencilPass>
-    pass("raise-affine-to-stencil", "Raise affine to stencil ops");
