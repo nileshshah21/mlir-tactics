@@ -616,6 +616,3 @@ void RaiseAffineToLinalgPass::runOnFunction() {
 std::unique_ptr<OpPassBase<FuncOp>> mlir::createRaiseAffineToLinalgPass() {
   return std::make_unique<RaiseAffineToLinalgPass>();
 }
-
-static PassRegistration<RaiseAffineToLinalgPass>
-    pass("raise-affine-to-linalg", "Raise affine to linalg ops");
