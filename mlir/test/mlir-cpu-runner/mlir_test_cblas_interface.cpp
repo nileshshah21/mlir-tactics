@@ -15,9 +15,12 @@
 #include <assert.h>
 #include <iostream>
 #include <string.h>
+#include <vector>
 
+#ifdef HAS_CPU_SUPPORT
 #include "dnnl.hpp"
 using namespace dnnl;
+#endif
 
 #ifdef HAS_GPU_SUPPORT
 #include <cublas_v2.h>
@@ -173,12 +176,15 @@ void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
 
   char isTransA = (transA) ? 'T' : 'N';
   char isTransB = (transB) ? 'T' : 'N';
-
+#ifdef HAS_CPU_SUPPORT
   auto res = dnnl_sgemm(isTransA, isTransB, M, N, K, (float)alpha,
                         A->data + A->offset, lda, B->data + B->offset, ldb,
                         (float)beta, C->data + C->offset, ldc);
   if (res != dnnl_success)
     assert(0 && "dnnl_sgemm failed");
+#endif
+
+  assert(0 && "naive gemm not implemented yet");
 }
 
 extern "C" void _mlir_ciface_matmul_42x42x42(int transA, int transB,
@@ -226,6 +232,7 @@ _mlir_ciface_linalg_fill_view2x5xf32_f32(StridedMemRefType<float, 2> *X,
   _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
 }
 
+#ifdef HAS_CPU_SUPPORT
 template <int D>
 inline memory::dims shapeToMklDnnDims(const StridedMemRefType<float, D> *T) {
   memory::dims dims(D);
@@ -275,6 +282,7 @@ inline memory::desc getMemDescr(const memory::dims &dims,
   createBlockedMemDescHelper(dims, strides, &blocked_md);
   return memory::desc(blocked_md);
 }
+#endif
 
 template <int T, int Z>
 void transposeBlas(StridedMemRefType<float, T> *S,
@@ -289,10 +297,10 @@ void transposeBlas(StridedMemRefType<float, T> *S,
   for (int i = 0; i < s; i++)
     arrayPerm.push_back(*(perm++));
 
-  // std::cout << "\nPermutation -> \n";
-  // for (const auto elem : arrayPerm)
-  //  std::cout << elem << "\n";
-
+    // std::cout << "\nPermutation -> \n";
+    // for (const auto elem : arrayPerm)
+    //  std::cout << elem << "\n";
+#ifdef HAS_CPU_SUPPORT
   auto cpu_engine = engine(engine::kind::cpu, 0);
   memory::dims in_dims = shapeToMklDnnDims(S);
   memory::dims out_dims = shapeToMklDnnDims(D);
@@ -306,6 +314,9 @@ void transposeBlas(StridedMemRefType<float, T> *S,
   auto r1 = reorder(inputMemory, outputMemory);
   auto stream_cpu = stream(cpu_engine);
   r1.execute(stream_cpu, inputMemory, outputMemory);
+#endif
+
+  assert(0 && "naive transpose not implemented yet");
 }
 
 extern "C" void
