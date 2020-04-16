@@ -1,4 +1,5 @@
 #include "mlir/Conversion/RaiseAffineToStencil/RaiseAffineToStencilPass.h"
+#include "../PassDetail.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
@@ -11,7 +12,8 @@
 using namespace mlir;
 
 namespace {
-class RaiseAffineToStencilPass : public FunctionPass<RaiseAffineToStencilPass> {
+class RaiseAffineToStencilPass
+    : public ConvertAffineToStencilBase<RaiseAffineToStencilPass> {
   void runOnFunction() override;
 };
 } // end namespace
@@ -116,6 +118,6 @@ void RaiseAffineToStencilPass::runOnFunction() {
     signalPassFailure();
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> mlir::createRaiseAffineToStencilPass() {
+std::unique_ptr<OperationPass<FuncOp>> mlir::createRaiseAffineToStencilPass() {
   return std::make_unique<RaiseAffineToStencilPass>();
 }

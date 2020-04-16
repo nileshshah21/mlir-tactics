@@ -1,4 +1,5 @@
 #include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalgPass.h"
+#include "../PassDetail.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Conversion/RaiseAffineToLinalg/RaiseAffineToLinalg.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
@@ -15,7 +16,8 @@
 using namespace mlir;
 
 namespace {
-class RaiseAffineToLinalgPass : public FunctionPass<RaiseAffineToLinalgPass> {
+class RaiseAffineToLinalgPass
+    : public ConvertAffineToLinalgBase<RaiseAffineToLinalgPass> {
   void runOnFunction() override;
 };
 } // namespace
@@ -578,6 +580,6 @@ void RaiseAffineToLinalgPass::runOnFunction() {
     signalPassFailure();
 }
 
-std::unique_ptr<OpPassBase<FuncOp>> mlir::createRaiseAffineToLinalgPass() {
+std::unique_ptr<OperationPass<FuncOp>> mlir::createRaiseAffineToLinalgPass() {
   return std::make_unique<RaiseAffineToLinalgPass>();
 }

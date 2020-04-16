@@ -15,11 +15,11 @@ namespace {
 
 namespace {
 struct TestTacticsLinalgDriver
-    : public mlir::FunctionPass<TestTacticsLinalgDriver> {
+    : public mlir::PassWrapper<TestTacticsLinalgDriver, mlir::FunctionPass> {
   void runOnFunction() override {
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 } // end namespace

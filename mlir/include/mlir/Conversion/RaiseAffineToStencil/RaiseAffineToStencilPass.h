@@ -6,7 +6,7 @@
 namespace mlir {
 
 /// Creates and returns a pass to raise Affine to Stencil Ops.
-std::unique_ptr<OpPassBase<FuncOp>> createRaiseAffineToStencilPass();
+std::unique_ptr<OperationPass<FuncOp>> createRaiseAffineToStencilPass();
 
 } // end namespace mlir.
 
