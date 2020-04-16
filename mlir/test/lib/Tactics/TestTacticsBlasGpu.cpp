@@ -6,11 +6,11 @@ namespace {
 
 namespace {
 struct TestTacticsBlasDriver
-    : public mlir::FunctionPass<TestTacticsBlasDriver> {
+    : public mlir::PassWrapper<TestTacticsBlasDriver, mlir::FunctionPass> {
   void runOnFunction() override {
     mlir::OwningRewritePatternList patterns;
     populateWithGenerated(&getContext(), &patterns);
-    applyPatternsGreedily(getFunction(), patterns);
+    applyPatternsAndFoldGreedily(getFunction(), patterns);
   }
 };
 } // end namespace

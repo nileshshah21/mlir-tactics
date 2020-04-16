@@ -6,7 +6,7 @@
 namespace mlir {
 
 /// Creates and returns a pass to raise Affine to Linalg Ops.
-std::unique_ptr<OpPassBase<FuncOp>> createRaiseAffineToLinalgPass();
+std::unique_ptr<OperationPass<FuncOp>> createRaiseAffineToLinalgPass();
 
 } // end namespace mlir.
 
