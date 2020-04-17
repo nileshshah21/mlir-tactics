@@ -47,7 +47,7 @@ target_link_libraries(MLIRTestTacticsBlasCpu
   MLIRIR
   MLIRPass
   LLVMSupport
-  MLIRAffine
+  MLIRAffineOps
 ) 
 
 target_link_libraries(MLIRTestTacticsLinalg
@@ -55,7 +55,7 @@ target_link_libraries(MLIRTestTacticsLinalg
   MLIRIR
   MLIRPass
   LLVMSupport
-  MLIRAffine
+  MLIRAffineOps
 )
 
 target_link_libraries(MLIRTestTacticsBlasGpu
@@ -63,5 +63,5 @@ target_link_libraries(MLIRTestTacticsBlasGpu
   MLIRIR
   MLIRPass
   LLVMSupport
-  MLIRAffine
+  MLIRAffineOps
 )
