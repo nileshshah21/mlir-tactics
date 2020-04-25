@@ -78,8 +78,7 @@ class matmulBuilder<Trans transa, Trans transb,
     using namespace mlir::edsc;
     using namespace mlir::edsc::ops;
     ScopedContext scop(rewriter, op.getLoc());
-    linalg_generic_matmul(
-      makeValueHandles(getOperandFromParamsMatmul()));
+    linalg_generic_matmul(getOperandFromParamsMatmul());
     
   }];
   // is A transpose ?
