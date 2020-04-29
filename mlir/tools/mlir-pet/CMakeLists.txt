@@ -12,6 +12,9 @@ add_llvm_executable(mlir-pet
   Lib/islAst.cc
   Lib/mlirCodegen.cc
   Lib/islNodeBuilder.cc
+  Lib/access_patterns.cc
+  Lib/builders.cc
+  Lib/matchers.cc
 )
 
 message(STATUS "PET include and lib path ->")
