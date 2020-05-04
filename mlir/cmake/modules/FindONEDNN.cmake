@@ -1,8 +1,8 @@
-set(ONEDNN_ROOT "$ENV{HOME}/oneDNN/")
+set(ONEDNN_ROOT "$ENV{HOME}/mkl-dnn/")
 set(ONEDNN_FOUND FALSE)
 
-find_path(ONEDNN_INCLUDE_PATH mkldnn.hpp mkldnn.h PATHS ${MKLDNN_ROOT} PATH_SUFFIXES install/include)
+find_path(ONEDNN_INCLUDE_PATH mkldnn.hpp mkldnn.h PATHS ${ONEDNN_ROOT} PATH_SUFFIXES install/include)
 if(ONEDNN_INCLUDE_PATH)
-  set(ONEDNN_LIBRARY_PATH ${MKLDNN_ROOT}/install/lib)
+  set(ONEDNN_LIBRARY_PATH ${ONEDNN_ROOT}/install/lib)
   set(ONEDNN_FOUND TRUE)
 endif(ONEDNN_INCLUDE_PATH)
