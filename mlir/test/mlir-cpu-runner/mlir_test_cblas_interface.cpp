@@ -13,6 +13,7 @@
 #include "include/mlir_test_cblas_interface.h"
 #include "include/mlir_test_cblas.h"
 #include <assert.h>
+#include <chrono>
 #include <iostream>
 #include <string.h>
 #include <vector>
@@ -26,6 +27,12 @@ using namespace dnnl;
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 #endif
+
+Timer *Timer::timer_instance = nullptr;
+
+extern "C" void start_timer() { Timer::get_instance()->start_timer(); }
+
+extern "C" void stop_timer() { Timer::get_instance()->stop_timer(); }
 
 extern "C" void
 _mlir_ciface_linalg_fill_viewf32_f32(StridedMemRefType<float, 0> *X, float f) {
@@ -182,6 +189,8 @@ void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
                         (float)beta, C->data + C->offset, ldc);
   if (res != dnnl_success)
     assert(0 && "dnnl_sgemm failed");
+
+  return;
 #endif
 
   assert(0 && "naive gemm not implemented yet");
@@ -300,6 +309,7 @@ void transposeBlas(StridedMemRefType<float, T> *S,
     // std::cout << "\nPermutation -> \n";
     // for (const auto elem : arrayPerm)
     //  std::cout << elem << "\n";
+
 #ifdef HAS_CPU_SUPPORT
   auto cpu_engine = engine(engine::kind::cpu, 0);
   memory::dims in_dims = shapeToMklDnnDims(S);
@@ -314,6 +324,7 @@ void transposeBlas(StridedMemRefType<float, T> *S,
   auto r1 = reorder(inputMemory, outputMemory);
   auto stream_cpu = stream(cpu_engine);
   r1.execute(stream_cpu, inputMemory, outputMemory);
+  return;
 #endif
 
   assert(0 && "naive transpose not implemented yet");
@@ -533,6 +544,72 @@ extern "C" void
 _mlir_ciface_linalg_fill_view64x32xf32_f32(StridedMemRefType<float, 2> *X,
                                            float f) {
   _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view900x1200xf32_f32(StridedMemRefType<float, 2> *X,
+                                              float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view1100x900xf32_f32(StridedMemRefType<float, 2> *X,
+                                              float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view800x1100xf32_f32(StridedMemRefType<float, 2> *X,
+                                              float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view800x1200xf32_f32(StridedMemRefType<float, 2> *X,
+                                              float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view800x900xf32_f32(StridedMemRefType<float, 2> *X,
+                                             float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view900x1100xf32_f32(StridedMemRefType<float, 2> *X,
+                                              float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view1000x900xf32_f32(StridedMemRefType<float, 2> *X,
+                                              float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view1200x1100xf32_f32(StridedMemRefType<float, 2> *X,
+                                               float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view800x1000xf32_f32(StridedMemRefType<float, 2> *X,
+                                              float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view2000x2000xf32_f32(StridedMemRefType<float, 2> *X,
+                                               float f) {
+  _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view2000xf32_f32(StridedMemRefType<float, 1> *X,
+                                          float f) {
+  _mlir_ciface_linalg_fill_viewsxf32_f32(X, f);
 }
 
 extern "C" void _mlir_ciface_matmul_32x32x64(int transA, int transB,
