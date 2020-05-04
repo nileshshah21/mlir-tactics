@@ -19,18 +19,33 @@ namespace mlir {
 
 namespace {
 
+// TODO: make matmulEntryBlas and MatVecEntryBlas
+// derivate classes of a common base one.
 // handy function to manipulate
 // tablegen entries for the matmul builder.
 class MatmulBlasEntry {
 public:
   explicit MatmulBlasEntry(llvm::Record *record) : record_(record) {}
-  int64_t alpha() const;
-  int64_t beta() const;
+  llvm::StringRef alpha() const;
+  llvm::StringRef beta() const;
   int64_t dimensionForM() const;
   int64_t dimensionForN() const;
   int64_t dimensionForK() const;
   llvm::StringRef transA() const;
   llvm::StringRef transB() const;
+  std::vector<llvm::StringRef> inputs() const;
+  llvm::StringRef outputs() const;
+
+private:
+  llvm::Record *record_;
+};
+
+class MatvecBlasEntry {
+public:
+  explicit MatvecBlasEntry(llvm::Record *record) : record_(record) {}
+  llvm::StringRef transA() const;
+  llvm::StringRef alpha() const;
+  llvm::StringRef beta() const;
   std::vector<llvm::StringRef> inputs() const;
   llvm::StringRef outputs() const;
 
@@ -92,7 +107,7 @@ private:
 
   // matvec builders/helpers.
   void emitMatvec(bool isEmitted, std::string destBuff);
-  void emitMatvecBlas(std::string A, std::string x, std::string y);
+  void emitMatvecBlas(std::string destBuff);
 
   void emitErase();
 
@@ -126,9 +141,11 @@ private:
   std::vector<identifierLine> getLocation() const;
 
   // emit matching logic.
-  using identifier = llvm::SmallSet<std::string, 8>;
-  void emitMatchLogic(const lang::Comprehension &comprehension,
-                      const std::pair<identifier, identifier> &ids);
+  using identifierIterators = llvm::SmallSet<std::string, 8>;
+  using identifierTensors = llvm::SmallSet<std::pair<bool, std::string>, 8>;
+  void
+  emitMatchLogic(const lang::Comprehension &comprehension,
+                 const std::pair<identifierIterators, identifierTensors> &ids);
 
   // emit rewriting logic.
   void emitRewriteLogic();
@@ -137,8 +154,9 @@ private:
   void emitStructuralMatchLogic(size_t nestedLoops);
 
   // emit access logic.
-  void emitAccessMatchLogic(const lang::Comprehension &comprehension,
-                            const std::pair<identifier, identifier> &ids);
+  void emitAccessMatchLogic(
+      const lang::Comprehension &comprehension,
+      const std::pair<identifierIterators, identifierTensors> &ids);
 
   // emit operation logic.
   void emitOperationMatchLogic(const lang::Comprehension &comprehension);
