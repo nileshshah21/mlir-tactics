@@ -25,7 +25,15 @@ func @main() {
   linalg.fill(%A, %cf1) : memref<1024x1024xf32>, f32
   linalg.fill(%B, %cf1) : memref<1024x1024xf32>, f32
   linalg.fill(%C, %cf0) : memref<1024x1024xf32>, f32
+  call @start_timer() : () -> ()
   call @contraction.ab.ac.cd(%A, %B, %C) : 
     (memref<1024x1024xf32>, memref<1024x1024xf32>, memref<1024x1024xf32>) -> ()
+  call @stop_timer() : () -> ()
+  %pC = memref_cast %C : memref<1024x1024xf32> to memref<*xf32>
+  // call @print_memref_f32(%pC) : (memref<*xf32>) -> ()
   return 
 }
+
+func @start_timer()
+func @stop_timer()
+func @print_memref_f32(memref<*xf32>)
