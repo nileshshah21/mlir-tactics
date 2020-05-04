@@ -44,8 +44,13 @@ getOrInsertFunction(mlir::PatternRewriter &rewriter, mlir::ModuleOp module,
   mlir::OpBuilder::InsertionGuard guard(rewriter);
   rewriter.setInsertionPoint(module.getBody(),
                              std::prev(module.getBody()->end()));
-  rewriter.create<mlir::FuncOp>(module.getLoc(), fName, libFnInfoType,
-                                llvm::ArrayRef<mlir::NamedAttribute>{});
+  mlir::FuncOp funcOp =
+      rewriter.create<mlir::FuncOp>(module.getLoc(), fName, libFnInfoType,
+                                    llvm::ArrayRef<mlir::NamedAttribute>{});
+  // Insert a function attribute that it will trigger the emission of
+  // _mlir_ciface_XXX.
+  funcOp.setAttr("llvm.emit_c_interface",
+                 mlir::UnitAttr::get(module.getContext()));
   return mlir::SymbolRefAttr::get(fName, context);
 }
 
