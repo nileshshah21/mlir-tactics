@@ -34,14 +34,42 @@ thread_local SymbolTableMap BuilderEmitter::symbolTable_;
 BuilderEmitter::BuilderEmitter(Record *record, raw_ostream &os)
     : record_(record), os(os){};
 
-int64_t MatmulBlasEntry::alpha() const {
+StringRef MatvecBlasEntry::alpha() const {
   auto record = record_->getValueAsDef("alpha");
-  return record->getValueAsInt("valueConstant");
+  return record->getValueAsString("valueConstant");
 }
 
-int64_t MatmulBlasEntry::beta() const {
+StringRef MatvecBlasEntry::beta() const {
   auto record = record_->getValueAsDef("beta");
-  return record->getValueAsInt("valueConstant");
+  return record->getValueAsString("valueConstant");
+}
+
+StringRef MatvecBlasEntry::transA() const {
+  auto record = record_->getValueAsDef("transA");
+  return record->getValueAsString("trans");
+}
+
+std::vector<llvm::StringRef> MatvecBlasEntry::inputs() const {
+  auto record = record_->getValueAsDef("inputs");
+  auto res = record->getValueAsListOfStrings("inputs");
+  assert(res.size() == 2 && "expect two inputs for matmul");
+  return res;
+}
+
+StringRef MatvecBlasEntry::outputs() const {
+  auto res = record_->getValueAsListOfStrings("outputs");
+  assert(res.size() == 1 && "expect one output for matmul");
+  return res[0];
+}
+
+StringRef MatmulBlasEntry::alpha() const {
+  auto record = record_->getValueAsDef("alpha");
+  return record->getValueAsString("valueConstant");
+}
+
+StringRef MatmulBlasEntry::beta() const {
+  auto record = record_->getValueAsDef("beta");
+  return record->getValueAsString("valueConstant");
 }
 
 int64_t MatmulBlasEntry::dimensionForM() const {
@@ -127,7 +155,7 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
   auto transB = (matmulEntry.transB() == "N") ? false : true;
   auto inputs = matmulEntry.inputs();
 
-  // lookup the inputs.
+  // lookup inputs.
   SmallVector<std::string, 2> lookupOperands;
   std::string lookupName;
   for (const auto &input : inputs) {
@@ -173,14 +201,31 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
   }
 }
 
-void BuilderEmitter::emitMatvecBlas(std::string A, std::string x,
-                                    std::string y) {
+void BuilderEmitter::emitMatvecBlas(std::string destBuff) {
+  auto matvecEntry = MatvecBlasEntry(record_);
+  auto alpha = matvecEntry.alpha();
+  auto beta = matvecEntry.beta();
+  auto transA = (matvecEntry.transA() == "N") ? false : true;
+  auto inputs = matvecEntry.inputs();
+
+  // lookup inputs.
+  SmallVector<std::string, 2> lookupOperands;
+  std::string lookupName;
+  for (const auto &input : inputs) {
+    if (!symbolTable_.lookup(input.str(), lookupName))
+      llvm_unreachable("cannot find symbol");
+    lookupOperands.push_back(lookupName);
+  }
+  auto x = destBuff;
+  auto A = lookupOperands[0];
+  auto y = lookupOperands[1];
+
   os << formatv(
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
-    createCallToMklSgemv(module, rewriter, op.getLoc(), {0}, {1}, {2});
+    createCallToMklSgemv(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4}, {5});
     )",
-      x, A, y);
+      x, A, y, alpha, beta, transA);
 }
 
 // TODO: remove me, prefer entry class as done for matmul.
@@ -199,12 +244,11 @@ SmallVector<std::string, 3> BuilderEmitter::getInputOperands() {
 void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
   assert((isEmitted == false) &&
          "matvec must not create a new buffer - in-place operation");
-  auto lookupInputOperands = getInputOperands();
-  assert((lookupInputOperands.size() == 2) && "expect 2 args for matvec");
+  // TODO: handle Linalg generation.
   if (!clEmitBlasCpu)
     os << "assert(0);\n";
   else
-    emitMatvecBlas(lookupInputOperands[0], lookupInputOperands[1], destBuff);
+    emitMatvecBlas(destBuff);
 }
 
 void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
@@ -465,29 +509,45 @@ void walkTree(const TreeRef &tree, std::function<void(const TreeRef &)> fn) {
 }
 
 // collect iterators from comprehension.
-using identifier = SmallSet<std::string, 8>;
-std::pair<identifier, identifier>
+using identifierInductions = SmallSet<std::string, 8>;
+using identifierTensors = SmallSet<std::pair<bool, std::string>, 8>;
+std::pair<identifierInductions, identifierTensors>
 collectIteratorsAndTensorNames(const Comprehension &comprehension) {
   SmallSet<std::string, 8> iterators;
-  SmallSet<std::string, 8> names;
+  SmallSet<std::pair<bool, std::string>, 8> tensors;
 
   for (const auto &lhs : comprehension.indices()) {
     iterators.insert(lhs.name());
   }
-  names.insert(comprehension.ident().name());
+  tensors.insert(std::make_pair(true, comprehension.ident().name()));
 
   walkTree(comprehension.rhs(), [&](const TreeRef &t) {
     if (t->kind() == TK_APPLY) {
       auto tc = Apply(t);
-      names.insert(tc.name().name());
+      tensors.insert(std::make_pair(true, tc.name().name()));
       auto tcIters = tc.arguments();
       for (const auto &tcIter : tcIters) {
         if (tcIter->kind() == TK_IDENT)
           iterators.insert(Ident(tcIter).name());
       }
     }
+    // detect scalar (i.e., alpha) which
+    // are represented as tk_ident. Make
+    // sure not to push iterators in the array name set.
+    // mark the scalar such that we avoid emitting m_ArrayPlaceholder.
+    if (t->kind() == TK_IDENT) {
+      auto tcName = Ident(t).name();
+      if (std::find(iterators.begin(), iterators.end(), tcName) ==
+          iterators.end()) {
+        auto it = std::find_if(
+            tensors.begin(), tensors.end(),
+            [&](std::pair<bool, std::string> p) { return p.second == tcName; });
+        if (it == tensors.end())
+          tensors.insert(std::make_pair(false, tcName));
+      }
+    }
   });
-  return std::make_pair(iterators, names);
+  return std::make_pair(iterators, tensors);
 }
 
 void TacticsEmitter::emitBinaryOperationMatcher(const TreeRef &t,
@@ -526,7 +586,8 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t) {
     return;
   }
   case TK_IDENT: {
-    assert(0 && "not handled");
+    auto scalar = Ident(t);
+    os << "m_AnyCapture(" << scalar.name() << ")";
     return;
   }
   default:
@@ -626,10 +687,11 @@ void TacticsEmitter::emitOperationMatchLogic(
   os << "\n";
 }
 
-using identifier = SmallSet<std::string, 8>;
+using identifierIterators = SmallSet<std::string, 8>;
+using identifierTensors = SmallSet<std::pair<bool, std::string>, 8>;
 void TacticsEmitter::emitAccessMatchLogic(
     const Comprehension &comprehension,
-    const std::pair<identifier, identifier> &ids) {
+    const std::pair<identifierIterators, identifierTensors> &ids) {
   os << R"(
       {)";
   os << R"(
@@ -642,8 +704,12 @@ void TacticsEmitter::emitAccessMatchLogic(
     os << "_" << id << " = m_Placeholder();\n";
   }
   for (const auto &id : ids.second) {
+    // do not emit m_ArrayPlaceholder if
+    // we are dealing with a scalar.
+    if (!id.first)
+      continue;
     os.indent(8) << "auto ";
-    os << "_" << id << " = m_ArrayPlaceholder();\n";
+    os << "_" << id.second << " = m_ArrayPlaceholder();\n";
   }
   os << "\n";
   emitOperationMatchLogic(comprehension);
@@ -652,10 +718,13 @@ void TacticsEmitter::emitAccessMatchLogic(
     os.indent(8) << iterator << " = "
                  << "pctx["
                  << "_" << iterator << "];\n";
-  for (const auto &tensorName : ids.second)
-    os.indent(8) << tensorName << " = "
+  for (const auto &tensorName : ids.second) {
+    if (!tensorName.first)
+      continue;
+    os.indent(8) << tensorName.second << " = "
                  << "pctx["
-                 << "_" << tensorName << "];\n";
+                 << "_" << tensorName.second << "];\n";
+  }
   os << R"(
         return true;
       })";
@@ -690,10 +759,12 @@ void TacticsEmitter::emitStructuralMatchLogic(size_t nestedLoops) {
     })";
 }
 
-using identifier = llvm::SmallSet<std::string, 8>;
+using identifierIterators = llvm::SmallSet<std::string, 8>;
+using identifierTensors = SmallSet<std::pair<bool, std::string>, 8>;
 void TacticsEmitter::emitMatchLogic(
     const lang::Comprehension &comprehension,
-    const std::pair<identifier, identifier> &iteratorsAndTensorNames) {
+    const std::pair<identifierIterators, identifierTensors>
+        &iteratorsAndTensorNames) {
 
   // declare each iterators and array name as Value type. The
   // value will get filled if we match the pattern.
@@ -702,7 +773,7 @@ void TacticsEmitter::emitMatchLogic(
     os.indent(4) << "mlir::Value " << iterator << ";"
                  << "\n";
   for (const auto &tensorName : iteratorsAndTensorNames.second)
-    os.indent(4) << "mlir::Value " << tensorName << ";"
+    os.indent(4) << "mlir::Value " << tensorName.second << ";"
                  << "\n";
   os << R"(
     auto body = [&](mlir::Operation &op) -> bool {
@@ -772,7 +843,7 @@ void TacticsEmitter::emit(StringRef tacticName) {
   os.indent(4) << "// Rewrite\n";
   // fill in the symbol table.
   for (const auto &tensor : iteratorsAndTensorNames.second)
-    BuilderEmitter::symbolTable_.insert(tensor, tensor);
+    BuilderEmitter::symbolTable_.insert(tensor.second, tensor.second);
   emitRewriteLogic();
   BuilderEmitter::symbolTable_.clear();
   // erase the content when the tactics is done.

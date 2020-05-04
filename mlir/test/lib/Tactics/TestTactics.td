@@ -51,8 +51,8 @@ class K<int v> : Dim {
 }
 
 // describe a constant.
-class Constant<int value> {
-  int valueConstant = value;
+class Constant<string value> {
+  string valueConstant = value;
 }
 
 class Builder<string n = "", code b = ""> {
@@ -99,11 +99,18 @@ class matmulBuilder<Trans transa, Trans transb,
   let outputs = outs;
 }
 
-class matvecBuilder<Inputs ins, Outputs outs> : Builder {
+class matvecBuilder<Trans transa, Inputs ins, Outputs outs, 
+                    Constant constantAlpha, Constant constantBeta> : Builder {
   // name.
   let name = "matvec";
   //body.
   let body = [{}];
+  // is A transpose ?
+  Trans transA = transa;
+  // alpha. 
+  Constant alpha = constantAlpha;
+  // beta.
+  Constant beta = constantBeta;
   // input params.
   let inputs = ins;
   // output params.
@@ -161,7 +168,7 @@ def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
 ]>;
 
 def testTransposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
-  matmulBuilder<Trans<"T">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>, 
+  matmulBuilder<Trans<"T">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">, 
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
@@ -169,7 +176,7 @@ def testTransposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,
 // experiments as described in Gareev et al.
 // tensor ab-ac-cb sizes 1024x1024 - 1024x1024 - 1024x1024
 def TENSORabaccb : Tactics<"C(a,b) += A(a,c) * B(c,b)", [
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
@@ -179,7 +186,7 @@ def TENSORabacddbc : Tactics<"C(a, b) += A(a, c, d) * B(d, b, c)", [
   permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
   reshapeBuilder<Inputs<["A"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
   reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["E", "F"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
@@ -189,7 +196,7 @@ def TENSORabcacddb : Tactics<"C(a, b, c) += A(a, c, d) * B(d, b)", [
   permutationBuilder<Inputs<["C"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1}">>,
   reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{0, 1}">>,
   reshapeBuilder<Inputs<["A"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["F", "B"]>, Outputs<["E"]>>, 
   reshapeBuilder<Inputs<["E"]>, Outputs<["D"]>, AffineExpression<"">>,
   permutationBuilder<Inputs<["D"]>, Outputs<["C"]>, AffineExpression<"{0, 2, 1}">>,
@@ -201,7 +208,7 @@ def TENSORabcadbdc : Tactics<"C(a, b, c) += A(a, d) * B(b, d, c)", [
   permutationBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
   reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{1, 2}">>,
   reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{1, 2}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["A", "E"]>, Outputs<["F"]>>,
   reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"">>,
   eraseOpBuilder
@@ -213,7 +220,7 @@ def TENSORabcaddcb : Tactics<"C(a, b) += A(c, a, d) * B(d, c, b)", [
   permutationBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{1, 0, 2}">>,
   reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{1, 2}">>,
   reshapeBuilder<Inputs<["E"]>, Outputs<["H"]>, AffineExpression<"{0, 1}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["F", "H"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
@@ -223,7 +230,7 @@ def TENSORabcdbadc : Tactics<"C(a, b, c) += A(b, d, a) * B(d, c)", [
   permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
   reshapeBuilder<Inputs<["C"]>, Outputs<["E"]>, AffineExpression<"{0, 1}">>,
   reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{0, 1}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["F", "B"]>, Outputs<["E"]>>,
   reshapeBuilder<Inputs<["E"]>, Outputs<["C"]>, AffineExpression<"">>,
   eraseOpBuilder
@@ -248,7 +255,7 @@ def TENSORabcdaebfdfce : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(d, f, c, e)
   reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{0, 1}">>,
   reshapeBuilder<Inputs<["L"]>, Outputs<["M"]>, AffineExpression<"{1, 2}">>, // B
 
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["I", "M"]>, Outputs<["G"]>>,
   reshapeBuilder<Inputs<["G"]>, Outputs<["C"]>, AffineExpression<"">>,
   eraseOpBuilder
@@ -267,20 +274,25 @@ def TENSORabcdaebffdec : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(f, d, e, c)
   reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{0, 1}">>,
   reshapeBuilder<Inputs<["L"]>, Outputs<["M"]>, AffineExpression<"{1, 2}">>, // B
 
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<1>, Constant<1>,
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["I", "M"]>, Outputs<["G"]>>,
   reshapeBuilder<Inputs<["G"]>, Outputs<["C"]>, AffineExpression<"">>,
   eraseOpBuilder
 ]>;
 
 def MatVec : Tactics<"x(i) += A(i, j) * y(j)", [
-  matvecBuilder<Inputs<["A", "y"]>, Outputs<["x"]>>,
+  matvecBuilder<Trans<"N">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
   eraseOpBuilder
 ]>;
 
 def MatVecTrans : Tactics<"x(i) += A(j, i) * y(j)", [
   permutationBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
-  matvecBuilder<Inputs<["D", "y"]>, Outputs<["x"]>>,
+  matvecBuilder<Trans<"N">, Inputs<["D", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
+  eraseOpBuilder
+]>;
+
+def MatVecWithConstant : Tactics<"x(i) += alpha * A(i,j) * y(j)", [
+  matvecBuilder<Trans<"N">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"alpha">, Constant<"1">>,
   eraseOpBuilder
 ]>;
 

@@ -205,6 +205,20 @@ std::string getPermutationArrayName(const llvm::ArrayRef<int> &perm) {
   return res;
 }
 
+mlir::Value createConstantFloatOp(int constant, mlir::Type t,
+                                  mlir::PatternRewriter &rewriter,
+                                  mlir::Location &loc) {
+  return rewriter.create<mlir::ConstantOp>(loc, t,
+                                           rewriter.getFloatAttr(t, constant));
+}
+
+// TODO: check how we can remove this function.
+mlir::Value createConstantFloatOp(mlir::Value constant, mlir::Type t,
+                                  mlir::PatternRewriter &rewriter,
+                                  mlir::Location &loc) {
+  return constant;
+}
+
 // create a function call to mkl sgemm. Declare the function if not already
 // in the module.
 // The generated function has the following args:
@@ -214,20 +228,31 @@ std::string getPermutationArrayName(const llvm::ArrayRef<int> &perm) {
 // memref<...> = C
 // memref<...> = A
 // memref<...> = B
-// llvm.i64 alpha
-// llvm.i64 beta
+// type of C alpha
+// type of C beta
+template <typename TypeAlpha, typename TypeBeta>
 void createCallToMklSgemm(mlir::ModuleOp module,
                           mlir::PatternRewriter &rewriter, mlir::Location loc,
                           mlir::Value C, mlir::Value A, mlir::Value B,
-                          int64_t alpha, int64_t beta, int transA, int transB,
-                          int64_t dimForM, int64_t dimForN, int64_t dimForK) {
+                          TypeAlpha alpha, TypeBeta beta, int transA,
+                          int transB, int64_t dimForM, int64_t dimForN,
+                          int64_t dimForK) {
+  static_assert(((std::is_same<TypeBeta, mlir::Value>::value) ||
+                 (std::is_same<TypeBeta, int>::value)),
+                "expect mlir::Value or int");
+  static_assert(((std::is_same<TypeAlpha, mlir::Value>::value) ||
+                 (std::is_same<TypeAlpha, int>::value)),
+                "expect mlir::Value or int");
+  // create alpha and beta using the same
+  // type as the C.
+  auto memref = C.getType().dyn_cast<mlir::MemRefType>();
+  auto type = memref.getElementType();
+  // create alpha and beta if specified as string.
+  auto betaV = createConstantFloatOp(beta, type, rewriter, loc);
+  auto alphaV = createConstantFloatOp(alpha, type, rewriter, loc);
+
   auto i64Type = mlir::LLVM::LLVMType::getInt64Ty(getLLVMDialect(module));
   auto i32Type = mlir::LLVM::LLVMType::getInt32Ty(getLLVMDialect(module));
-  // create alpha and beta.
-  mlir::Value alphaV = rewriter.create<mlir::LLVM::ConstantOp>(
-      loc, i64Type, rewriter.getI64IntegerAttr(alpha));
-  mlir::Value betaV = rewriter.create<mlir::LLVM::ConstantOp>(
-      loc, i64Type, rewriter.getI64IntegerAttr(beta));
   mlir::Value dimForMV = rewriter.create<mlir::LLVM::ConstantOp>(
       loc, i64Type, rewriter.getI64IntegerAttr(dimForM));
   mlir::Value dimForNV = rewriter.create<mlir::LLVM::ConstantOp>(
@@ -246,8 +271,8 @@ void createCallToMklSgemm(mlir::ModuleOp module,
   auto symbolFn = getOrInsertFunction(
       rewriter, module, fn,
       llvm::ArrayRef<mlir::Type>{i32Type, i32Type, C.getType(), A.getType(),
-                                 B.getType(), i64Type, i64Type, i64Type,
-                                 i64Type, i64Type});
+                                 B.getType(), type, type, i64Type, i64Type,
+                                 i64Type});
   rewriter.create<mlir::CallOp>(
       loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
       llvm::ArrayRef<mlir::Value>{transAV, transBV, C, A, B, alphaV, betaV,
@@ -256,17 +281,38 @@ void createCallToMklSgemm(mlir::ModuleOp module,
 
 // create a function call to mkl sgemv. Declare the function if not already
 // in the module.
+template <typename TypeAlpha, typename TypeBeta>
 void createCallToMklSgemv(mlir::ModuleOp module,
                           mlir::PatternRewriter &rewriter, mlir::Location loc,
-                          mlir::Value x, mlir::Value A, mlir::Value y) {
+                          mlir::Value x, mlir::Value A, mlir::Value y,
+                          TypeAlpha alpha, TypeBeta beta, int transA) {
+  static_assert(((std::is_same<TypeBeta, mlir::Value>::value) ||
+                 (std::is_same<TypeBeta, int>::value)),
+                "expect mlir::Value or int");
+  static_assert(((std::is_same<TypeAlpha, mlir::Value>::value) ||
+                 (std::is_same<TypeAlpha, int>::value)),
+                "expect mlir::Value or int");
+  // create alpha and beta using the same
+  // type as the x, if specified as string.
+  auto memref = x.getType().dyn_cast<mlir::MemRefType>();
+  auto type = memref.getElementType();
+
+  auto betaV = createConstantFloatOp(beta, type, rewriter, loc);
+  auto alphaV = createConstantFloatOp(alpha, type, rewriter, loc);
+  auto i32Type = mlir::LLVM::LLVMType::getInt32Ty(getLLVMDialect(module));
+  mlir::Value transAV = rewriter.create<mlir::LLVM::ConstantOp>(
+      loc, i32Type, rewriter.getI32IntegerAttr(transA));
+
   auto fn = composeFunctionCallName(
       FUNCTION::MATVEC,
       llvm::ArrayRef<mlir::Type>{x.getType(), A.getType(), y.getType()});
   auto symbolFn = getOrInsertFunction(
       rewriter, module, fn,
-      llvm::ArrayRef<mlir::Type>{x.getType(), A.getType(), y.getType()});
-  rewriter.create<mlir::CallOp>(loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
-                                llvm::ArrayRef<mlir::Value>{x, A, y});
+      llvm::ArrayRef<mlir::Type>{x.getType(), A.getType(), y.getType(), type,
+                                 type, i32Type});
+  rewriter.create<mlir::CallOp>(
+      loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
+      llvm::ArrayRef<mlir::Value>{x, A, y, alphaV, betaV, transAV});
 }
 
 // create a function call to mkl rehsape. Declare the function if not already
