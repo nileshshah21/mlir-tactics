@@ -1,4 +1,4 @@
-// RUN: mlir-opt -disable-pass-threading=true -test-tactics-blas-gpu  %s | FileCheck %s
+// RUN: mlir-opt -mlir-disable-threading -test-tactics-blas-gpu  %s | FileCheck %s
 
 func @contraction.ab.ac.cd(%A: memref<1024x1024xf32>, %B: memref<1024x1024xf32>, %C: memref<1024x1024xf32>) {
   // CHECK: call @allocateMemoryForDevice
