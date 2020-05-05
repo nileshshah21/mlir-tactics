@@ -286,13 +286,17 @@ def MatVec : Tactics<"x(i) += A(i, j) * y(j)", [
 ]>;
 
 def MatVecTrans : Tactics<"x(i) += A(j, i) * y(j)", [
-  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0}">>,
-  matvecBuilder<Trans<"N">, Inputs<["D", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
+  matvecBuilder<Trans<"T">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
   eraseOpBuilder
 ]>;
 
 def MatVecWithConstant : Tactics<"x(i) += alpha * A(i,j) * y(j)", [
   matvecBuilder<Trans<"N">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"alpha">, Constant<"1">>,
+  eraseOpBuilder
+]>;
+
+def MatVecWithConstantTranspose : Tactics<"x(i) += alpha * A(j,i) * y(j)", [
+  matvecBuilder<Trans<"T">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"alpha">, Constant<"1">>, 
   eraseOpBuilder
 ]>;
 
