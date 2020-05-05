@@ -91,6 +91,9 @@ public:
   // create a statement from a pet_expr.
   mlir::LogicalResult createStmt(__isl_keep pet_expr *expr);
 
+  // create a blas operation.
+  mlir::LogicalResult createBlasOperation(isl::id id);
+
   // set the insertion point after the loop op. This method
   // is used by islNodeBuilder to move the insertion point
   // after the body of a loop has been created.

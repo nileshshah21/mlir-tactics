@@ -692,6 +692,8 @@ LogicalResult MLIRCodegen::createStmt(__isl_keep pet_expr *expr) {
   return success();
 }
 
+LogicalResult MLIRCodegen::createBlasOperation(isl::id id) { return failure(); }
+
 static mlir::Type getType(const PetArray &array, MLIRContext &context) {
   auto type = array.getType();
   switch (type) {

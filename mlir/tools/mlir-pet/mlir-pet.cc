@@ -1,3 +1,4 @@
+#include "Lib/access_patterns.h"
 #include "Lib/builders.h"
 #include "Lib/ctx.h"
 #include "Lib/islAst.h"
@@ -120,6 +121,9 @@ replaceDFSPreorderOnce(isl::schedule_node node,
                        const matchers::ScheduleNodeMatcher &pattern,
                        const builders::ScheduleNodeBuilder &replacement) {
   node = replaceOnce(node, pattern, replacement);
+  if ((isl_schedule_node_get_type(node.get())) == isl_schedule_node_mark) {
+    return node;
+  }
   for (int i = 0; i < node.n_children(); ++i) {
     node = replaceDFSPreorderOnce(node.child(i), pattern, replacement).parent();
   }
@@ -134,7 +138,7 @@ static isl::schedule runDetection(pet::Scop &scop) {
   using namespace matchers;
 
   // check if the partial schedule is 3d.
-  auto is3d = [&](isl::schedule_node band) {
+  auto is3d = [](isl::schedule_node band) {
     auto umap = band.child(0).get_prefix_schedule_union_map();
     if (umap.n_map() != 1)
       return false;
@@ -142,9 +146,48 @@ static isl::schedule runDetection(pet::Scop &scop) {
     return map.dim(isl::dim::out) == 3;
   };
 
+  auto hasGemmAccess = [&scop](isl::schedule_node band) {
+    auto reads = scop.getReads();
+    auto writes = scop.getMustWrites();
+    reads = reads.apply_domain(band.child(0).get_prefix_schedule_union_map());
+    writes = writes.apply_domain(band.child(0).get_prefix_schedule_union_map());
+
+    using namespace matchers;
+    auto ctx = band.get_ctx();
+    auto _i = placeholder(ctx);
+    auto _ii = placeholder(ctx);
+    auto _j = placeholder(ctx);
+    auto _jj = placeholder(ctx);
+    auto _k = placeholder(ctx);
+    auto _A = arrayPlaceholder();
+    auto _B = arrayPlaceholder();
+    auto _C = arrayPlaceholder();
+
+    // placeholder are *not* reused across different calls of allOf.
+    auto psRead =
+        allOf(access(_C, _i, _j), access(_A, _i, _k), access(_B, _k, _j));
+    auto psWrite = allOf(access(_C, _ii, _jj));
+    auto readMatches = match(reads, psRead);
+    auto writeMatches = match(writes, psWrite);
+
+    if ((readMatches.size() != 1) || (writeMatches.size() != 1))
+      return false;
+
+    if ((readMatches[0][_i].payload().inputDimPos_ !=
+         writeMatches[0][_ii].payload().inputDimPos_) ||
+        (readMatches[0][_j].payload().inputDimPos_ !=
+         writeMatches[0][_jj].payload().inputDimPos_))
+      return false;
+    return true;
+  };
+
+  auto isGemmLike = [&](isl::schedule_node band) {
+    return is3d(band) && hasGemmAccess(band);
+  };
+
   // clang-format off
   auto matcher =
-  band(is3d, ijk, 
+  band(isGemmLike, ijk, 
     leaf());
   // clang-format on
 
@@ -152,8 +195,11 @@ static isl::schedule runDetection(pet::Scop &scop) {
   {
     using namespace builders;
     auto scheduleIJK = [&]() { return ijk.band_get_partial_schedule(); };
+    auto marker = [&]() {
+      return isl::id::alloc(ijk.get_ctx(), "MatMul", nullptr);
+    };
     // clang-format off
-    builder = band(scheduleIJK);
+    builder = mark(marker, band(scheduleIJK));
     // clang-format on
   }
 

@@ -42,6 +42,9 @@ private:
   // TODO: void or LogicalResult?
   // create an ifOp.
   void createIf(isl::ast_node ifNode);
+
+  // create blas operation.
+  void createBlasOperation(isl::ast_node markNode);
 };
 
 } // end namespace codegen

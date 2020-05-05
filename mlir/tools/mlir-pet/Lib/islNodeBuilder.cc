@@ -135,6 +135,13 @@ void IslNodeBuilder::createIf(isl::ast_node ifNode) {
   outs() << __func__ << "\n";
 }
 
+void IslNodeBuilder::createBlasOperation(isl::ast_node markNode) {
+  if (failed(MLIRBuilder_.createBlasOperation(markNode.mark_get_id()))) {
+    MLIRBuilder_.dump();
+    llvm_unreachable("cannot generate blas function");
+  }
+}
+
 void IslNodeBuilder::MLIRFromISLAstImpl(isl::ast_node node) {
   // std::cout << node.to_str() << "\n";
   switch (isl_ast_node_get_type(node.get())) {
@@ -150,7 +157,7 @@ void IslNodeBuilder::MLIRFromISLAstImpl(isl::ast_node node) {
     createBlock(node);
     return;
   case isl_ast_node_mark:
-    // simply return, don't generate.
+    createBlasOperation(node);
     return;
   case isl_ast_node_if:
     createIf(node);
