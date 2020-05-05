@@ -454,7 +454,7 @@ void BuilderEmitter::emit() {
     emitMatvec(isEmitted, dest);
     emitPostamble();
   }
-  if (builderName.equals("permute")) {
+  if (builderName.equals("transpose")) {
     emitPreamble(isEmitted, dest, TransposeBlasEntry(record_).outputs());
     emitTranspose(isEmitted, dest);
     emitPostamble();
