@@ -53,6 +53,28 @@ private:
   llvm::Record *record_;
 };
 
+class ReshapeBlasEntry {
+public:
+  explicit ReshapeBlasEntry(llvm::Record *record) : record_(record) {}
+  llvm::StringRef map() const;
+  llvm::StringRef inputs() const;
+  llvm::StringRef outputs() const;
+
+private:
+  llvm::Record *record_;
+};
+
+class TransposeBlasEntry {
+public:
+  explicit TransposeBlasEntry(llvm::Record *record) : record_(record) {}
+  llvm::StringRef permutation() const;
+  llvm::StringRef inputs() const;
+  llvm::StringRef outputs() const;
+
+private:
+  llvm::Record *record_;
+};
+
 enum class Target { CPU, GPU };
 
 class SymbolTableMap {
@@ -80,16 +102,13 @@ private:
   llvm::Record *record_;
   llvm::raw_ostream &os;
 
-  // get field with id "id". In the long run
-  // if the classes in tablegen get more complicated
-  // we can have simple wrapper around them.
-  // TODO: remove me.
-  std::vector<StringRef> getField(StringRef id);
+  // lookup operands in symbol table.
+  std::string lookUpOperand(llvm::StringRef operand) const;
+  std::vector<std::string>
+  lookUpOperands(std::vector<llvm::StringRef> operands) const;
 
-  void emitPreamble(bool &isEmitted, std::string &dest);
+  void emitPreamble(bool &isEmitted, std::string &dest, llvm::StringRef output);
   void emitPostamble();
-  // TODO: remove me.
-  SmallVector<std::string, 3> getInputOperands();
 
   // matmul builders/helpers.
   void emitMatmul(bool isEmitted, std::string destBuff);

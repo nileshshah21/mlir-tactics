@@ -34,6 +34,46 @@ thread_local SymbolTableMap BuilderEmitter::symbolTable_;
 BuilderEmitter::BuilderEmitter(Record *record, raw_ostream &os)
     : record_(record), os(os){};
 
+// TODO: make name consistent map and permuation.
+StringRef ReshapeBlasEntry::map() const {
+  auto record = record_->getValueAsDef("affineExpr");
+  return record->getValueAsString("affineExpr");
+}
+
+StringRef ReshapeBlasEntry::inputs() const {
+  auto record = record_->getValueAsDef("inputs");
+  auto res = record->getValueAsListOfStrings("inputs");
+  assert(res.size() == 1 && "expect single input for reshape");
+  return res[0];
+}
+
+StringRef ReshapeBlasEntry::outputs() const {
+  auto record = record_->getValueAsDef("outputs");
+  auto res = record->getValueAsListOfStrings("outputs");
+  assert(res.size() == 1 && "expect single output for reshape");
+  return res[0];
+}
+
+// TODO: make name consistent affineExpr and permuation.
+StringRef TransposeBlasEntry::permutation() const {
+  auto record = record_->getValueAsDef("affineExpr");
+  return record->getValueAsString("affineExpr");
+}
+
+StringRef TransposeBlasEntry::inputs() const {
+  auto record = record_->getValueAsDef("inputs");
+  auto res = record->getValueAsListOfStrings("inputs");
+  assert(res.size() == 1 && "expect single input for transpose");
+  return res[0];
+}
+
+StringRef TransposeBlasEntry::outputs() const {
+  auto record = record_->getValueAsDef("outputs");
+  auto res = record->getValueAsListOfStrings("outputs");
+  assert(res.size() == 1 && "expect single output for transpose");
+  return res[0];
+}
+
 StringRef MatvecBlasEntry::alpha() const {
   auto record = record_->getValueAsDef("alpha");
   return record->getValueAsString("valueConstant");
@@ -57,7 +97,8 @@ std::vector<llvm::StringRef> MatvecBlasEntry::inputs() const {
 }
 
 StringRef MatvecBlasEntry::outputs() const {
-  auto res = record_->getValueAsListOfStrings("outputs");
+  auto record = record_->getValueAsDef("outputs");
+  auto res = record->getValueAsListOfStrings("outputs");
   assert(res.size() == 1 && "expect one output for matmul");
   return res[0];
 }
@@ -105,33 +146,17 @@ std::vector<llvm::StringRef> MatmulBlasEntry::inputs() const {
 }
 
 StringRef MatmulBlasEntry::outputs() const {
-  auto res = record_->getValueAsListOfStrings("outputs");
+  auto record = record_->getValueAsDef("outputs");
+  auto res = record->getValueAsListOfStrings("outputs");
   assert(res.size() == 1 && "expect one output for matmul");
   return res[0];
-}
-
-// TODO: remove me (prefer the interface method as done for
-// matmul).
-std::vector<StringRef> BuilderEmitter::getField(StringRef id) {
-  auto record = record_->getValueAsDef(id);
-  if (id.equals("affineExpr")) {
-    std::vector<StringRef> res = {record->getValueAsString(id)};
-    return res;
-  }
-  return record->getValueAsListOfStrings(id);
 }
 
 void BuilderEmitter::emitMatmulLinalgHelpers(std::string destBuff) {
   auto matmulEntry = MatmulBlasEntry(record_);
   auto inputs = matmulEntry.inputs();
-  // lookup the inputs.
-  SmallVector<std::string, 2> lookupOperands;
-  std::string lookupName;
-  for (const auto &input : inputs) {
-    if (!symbolTable_.lookup(input.str(), lookupName))
-      llvm_unreachable("cannot find symbol");
-    lookupOperands.push_back(lookupName);
-  }
+  auto lookupOperands = lookUpOperands(inputs);
+
   auto C = destBuff;
   auto A = lookupOperands[0];
   auto B = lookupOperands[1];
@@ -155,14 +180,7 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
   auto transB = (matmulEntry.transB() == "N") ? false : true;
   auto inputs = matmulEntry.inputs();
 
-  // lookup inputs.
-  SmallVector<std::string, 2> lookupOperands;
-  std::string lookupName;
-  for (const auto &input : inputs) {
-    if (!symbolTable_.lookup(input.str(), lookupName))
-      llvm_unreachable("cannot find symbol");
-    lookupOperands.push_back(lookupName);
-  }
+  auto lookupOperands = lookUpOperands(inputs);
   auto C = destBuff;
   auto A = lookupOperands[0];
   auto B = lookupOperands[1];
@@ -208,14 +226,7 @@ void BuilderEmitter::emitMatvecBlas(std::string destBuff) {
   auto transA = (matvecEntry.transA() == "N") ? false : true;
   auto inputs = matvecEntry.inputs();
 
-  // lookup inputs.
-  SmallVector<std::string, 2> lookupOperands;
-  std::string lookupName;
-  for (const auto &input : inputs) {
-    if (!symbolTable_.lookup(input.str(), lookupName))
-      llvm_unreachable("cannot find symbol");
-    lookupOperands.push_back(lookupName);
-  }
+  auto lookupOperands = lookUpOperands(inputs);
   auto x = destBuff;
   auto A = lookupOperands[0];
   auto y = lookupOperands[1];
@@ -226,19 +237,6 @@ void BuilderEmitter::emitMatvecBlas(std::string destBuff) {
     createCallToMklSgemv(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4}, {5});
     )",
       x, A, y, alpha, beta, transA);
-}
-
-// TODO: remove me, prefer entry class as done for matmul.
-SmallVector<std::string, 3> BuilderEmitter::getInputOperands() {
-  auto inputs = getField("inputs");
-  SmallVector<std::string, 3> lookupOperands;
-  std::string lookupName;
-  for (const auto &input : inputs) {
-    if (!symbolTable_.lookup(input.str(), lookupName))
-      llvm_unreachable("cannot find symbol");
-    lookupOperands.push_back(lookupName);
-  }
-  return lookupOperands;
 }
 
 void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
@@ -267,16 +265,30 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
   os << record_->getValueAsString("body");
 }
 
-void BuilderEmitter::emitTransposeHelpers() {
-  auto inputs = getField("inputs");
-  auto affineExpr = getField("affineExpr");
-
-  assert((affineExpr.size() == 1) && "expect single affine expr for transpose");
-  assert((inputs.size() == 1) && "expect single input for transpose");
-
-  std::string lookupInput;
-  if (!symbolTable_.lookup(inputs[0].str(), lookupInput))
+std::string BuilderEmitter::lookUpOperand(StringRef operand) const {
+  std::string lookupOperand;
+  if (!symbolTable_.lookup(operand.str(), lookupOperand))
     llvm_unreachable("cannot find symbol");
+  return lookupOperand;
+}
+
+std::vector<std::string>
+BuilderEmitter::lookUpOperands(std::vector<StringRef> operands) const {
+  std::vector<std::string> lookupOperands;
+  for (const auto &operand : operands) {
+    std::string lookupOperand;
+    if (!symbolTable_.lookup(operand.str(), lookupOperand))
+      llvm_unreachable("cannot find symbol");
+    lookupOperands.push_back(lookupOperand);
+  }
+  return lookupOperands;
+}
+
+void BuilderEmitter::emitTransposeHelpers() {
+  auto transposeBlasEntry = TransposeBlasEntry(record_);
+  auto input = transposeBlasEntry.inputs();
+  auto lookupInput = lookUpOperand(input);
+  auto permutation = transposeBlasEntry.permutation();
 
   os << formatv(
       R"(
@@ -290,16 +302,14 @@ void BuilderEmitter::emitTransposeHelpers() {
     auto getPermutationMapFromParamsPermute = []() {
       return llvm::ArrayRef<unsigned>({0});
     };)",
-      affineExpr[0]);
+      permutation);
 }
 
 void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
-  auto lookupInputOperand = getInputOperands();
-  assert((lookupInputOperand.size() == 1) && "expect single operand");
-  auto permutations = getField("affineExpr");
-  assert((permutations.size()) == 1 &&
-         "expect single permutation for transpose");
-  auto permutation = permutations[0];
+  auto transposeBlasEntry = TransposeBlasEntry(record_);
+  auto input = transposeBlasEntry.inputs();
+  auto lookupOperand = lookUpOperand(input);
+  auto permutation = transposeBlasEntry.permutation();
   // each transpose operation does the following:
   // 1. create a new memref, if "isEmitted" is assert.
   // 2. compose the function call and create a global
@@ -318,13 +328,13 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
     )",
-        lookupInputOperand[0], permutation, destBuff);
+        lookupOperand, permutation, destBuff);
   }
   os << formatv(
       R"(
     createCallToMklTranspose(module, rewriter, op.getLoc(), {0}, {2}, {1}); 
   )",
-      lookupInputOperand[0], permutation, destBuff);
+      lookupOperand, permutation, destBuff);
 }
 
 void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
@@ -344,10 +354,10 @@ void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
 }
 
 void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
-  auto lookupInputOperand = getInputOperands();
-  assert((lookupInputOperand.size() == 1) && "expect single operand");
-  auto indexMaps = getField("affineExpr");
-  auto indexMap = indexMaps[0];
+  auto reshapeBlasEntry = ReshapeBlasEntry(record_);
+  auto input = reshapeBlasEntry.inputs();
+  auto lookupOperand = lookUpOperand(input);
+  auto indexMap = reshapeBlasEntry.map();
 
   os << formatv(
       R"(
@@ -361,13 +371,13 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
   )",
-        lookupInputOperand[0], indexMap, destBuff);
+        lookupOperand, indexMap, destBuff);
   }
   os << formatv(
       R"(
     createCallToMklReshape(module, rewriter, op.getLoc(), {0}, {1}); 
   )",
-      lookupInputOperand[0], destBuff);
+      lookupOperand, destBuff);
 }
 
 void BuilderEmitter::emitReshape(bool isEmitted, std::string destBuff) {
@@ -388,12 +398,10 @@ void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }
 // is not already available in the symbol table.
 // We also insert the new variable in the symbol table and
 // bind it with the output.
-void BuilderEmitter::emitPreamble(bool &isEmitted, std::string &dest) {
-  // get new variable name if output not defined yet.
-  auto outputs = getField("outputs");
-  assert((outputs.size() == 1) && "expect single output");
+void BuilderEmitter::emitPreamble(bool &isEmitted, std::string &dest,
+                                  StringRef output) {
   isEmitted = false;
-  dest = outputs[0].str();
+  dest = output.str();
   std::string lookupSymbol;
   if (symbolTable_.lookup(dest, lookupSymbol)) {
     dest = lookupSymbol;
@@ -401,7 +409,7 @@ void BuilderEmitter::emitPreamble(bool &isEmitted, std::string &dest) {
     auto emittedVar = symbolTable_.getNextVariable();
     isEmitted = true;
     dest = emittedVar;
-    symbolTable_.updateOrInsert(outputs[0].str(), emittedVar);
+    symbolTable_.updateOrInsert(output.str(), emittedVar);
     os << formatv(
         R"(
     mlir::Value {0};
@@ -437,22 +445,22 @@ void BuilderEmitter::emit() {
   std::string dest = "unknown";
   bool isEmitted = false;
   if (builderName.equals("matmul")) {
-    emitPreamble(isEmitted, dest);
+    emitPreamble(isEmitted, dest, MatmulBlasEntry(record_).outputs());
     emitMatmul(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("matvec")) {
-    emitPreamble(isEmitted, dest);
+    emitPreamble(isEmitted, dest, MatvecBlasEntry(record_).outputs());
     emitMatvec(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("permute")) {
-    emitPreamble(isEmitted, dest);
+    emitPreamble(isEmitted, dest, TransposeBlasEntry(record_).outputs());
     emitTranspose(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("reshape")) {
-    emitPreamble(isEmitted, dest);
+    emitPreamble(isEmitted, dest, ReshapeBlasEntry(record_).outputs());
     emitReshape(isEmitted, dest);
     emitPostamble();
   }
