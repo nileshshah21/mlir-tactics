@@ -1,4 +1,4 @@
-// RUN: mlir-opt -disable-pass-threading=true -test-tactics-blas-cpu  %s | FileCheck %s
+// RUN: mlir-opt -mlir-disable-threading -test-tactics-blas-cpu  %s | FileCheck %s
 
 func @checkFunctionName(%A : memref<5x3xf32>, %B: memref<3x6xf32>, %C: memref<5x6xf32>) {
   // CHECK: @matmul_5x6x3
