@@ -759,7 +759,7 @@ void TacticsEmitter::emitStructuralMatchLogic(size_t nestedLoops) {
     })";
 }
 
-using identifierIterators = llvm::SmallSet<std::string, 8>;
+using identifierIterators = SmallSet<std::string, 8>;
 using identifierTensors = SmallSet<std::pair<bool, std::string>, 8>;
 void TacticsEmitter::emitMatchLogic(
     const lang::Comprehension &comprehension,
