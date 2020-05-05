@@ -25,11 +25,11 @@ func @scop_entry(%arg0: memref<800x1100xf32>,
       affine.for %arg8 = 0 to 900 {
         affine.for %arg9 = 0 to 1100 {
           %0 = affine.load %arg0[%arg7, %arg9] : memref<800x1100xf32>
-          %2 = affine.load %arg1[%arg9, %arg8] : memref<1100x900xf32>
-          %4 = affine.load %arg6[%arg7, %arg8] : memref<800x900xf32>
-          %1 = mulf %arg4, %0 : f32
-          %3 = mulf %1, %2 : f32
-          %5 = addf %3, %4 : f32
+          %1 = affine.load %arg1[%arg9, %arg8] : memref<1100x900xf32>
+          %2 = affine.load %arg6[%arg7, %arg8] : memref<800x900xf32>
+          %3 = mulf %arg4, %0 : f32
+          %4 = mulf %3, %1 : f32
+          %5 = addf %2, %4 : f32
           affine.store %5, %arg6[%arg7, %arg8] : memref<800x900xf32>
         }
       }

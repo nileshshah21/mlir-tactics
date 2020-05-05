@@ -32,8 +32,8 @@ func @scop_entry(%arg0: memref<800x1000xf32>,
         affine.for %arg9 = 0 to 1000 {
           %0 = affine.load %arg0[%arg7, %arg9] : memref<800x1000xf32>
           %1 = affine.load %arg1[%arg9, %arg8] : memref<1000x900xf32>
-          %3 = affine.load %arg4[%arg7, %arg8] : memref<800x900xf32>
-          %2 = mulf %0, %1 : f32 
+          %2 = affine.load %arg4[%arg7, %arg8] : memref<800x900xf32>
+          %3 = mulf %0, %1 : f32 
           %4 = addf %2, %3 : f32
           affine.store %4, %arg4[%arg7, %arg8] : memref<800x900xf32>
         }
@@ -45,8 +45,8 @@ func @scop_entry(%arg0: memref<800x1000xf32>,
         affine.for %arg9 = 0 to 1200 {
           %0 = affine.load %arg2[%arg7, %arg9] : memref<900x1200xf32>
           %1 = affine.load %arg3[%arg9, %arg8] : memref<1200x1100xf32>
-          %3 = affine.load %arg5[%arg7, %arg8] : memref<900x1100xf32>
-          %2 = mulf %0, %1 : f32
+          %2 = affine.load %arg5[%arg7, %arg8] : memref<900x1100xf32>
+          %3 = mulf %0, %1 : f32
           %4 = addf %2, %3 : f32
           affine.store %4, %arg5[%arg7, %arg8] : memref<900x1100xf32>
         }
@@ -58,8 +58,8 @@ func @scop_entry(%arg0: memref<800x1000xf32>,
         affine.for %arg9 = 0 to 900 {
           %0 = affine.load %arg4[%arg7, %arg9] : memref<800x900xf32>
           %1 = affine.load %arg5[%arg9, %arg8] : memref<900x1100xf32>
-          %3 = affine.load %arg6[%arg7, %arg8] : memref<800x1100xf32>
-          %2 = mulf %0, %1 : f32 
+          %2 = affine.load %arg6[%arg7, %arg8] : memref<800x1100xf32>
+          %3 = mulf %0, %1 : f32 
           %4 = addf %2, %3 : f32
           affine.store %4, %arg6[%arg7, %arg8] : memref<800x1100xf32>
         }
