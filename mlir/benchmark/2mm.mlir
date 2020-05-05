@@ -42,7 +42,7 @@ func @scop_entry(%arg0: memref<800x1100xf32>,
           %1 = affine.load %arg2[%arg9, %arg8] : memref<900x1200xf32>
           %3 = affine.load %arg3[%arg7, %arg8] : memref<800x1200xf32>
           %2 = mulf %0, %1 : f32 
-          %4 = addf %2, %3 : f32
+          %4 = addf %3, %2 : f32
           affine.store %4, %arg3[%arg7, %arg8] : memref<800x1200xf32>
         }
       }
