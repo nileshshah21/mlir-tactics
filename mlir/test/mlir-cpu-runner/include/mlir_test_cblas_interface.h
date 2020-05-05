@@ -167,11 +167,12 @@ _mlir_ciface_linalg_fill_view1024x1024xf32_f32(StridedMemRefType<float, 2> *X,
                                                float f);
 
 extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
-_matmul_1024x1024x1024(int transA, int transB, StridedMemRefType<float, 2> *C,
-                       StridedMemRefType<float, 2> *A,
-                       StridedMemRefType<float, 2> *B, int64_t alpha,
-                       int64_t beta, int64_t dimForM, int64_t dimForN,
-                       int64_t dimForK);
+_mlir_ciface_matmul_1024x1024x1024(int transA, int transB,
+                                   StridedMemRefType<float, 2> *C,
+                                   StridedMemRefType<float, 2> *A,
+                                   StridedMemRefType<float, 2> *B,
+                                   int64_t alpha, int64_t beta, int64_t dimForM,
+                                   int64_t dimForN, int64_t dimForK);
 
 extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_transpose_32x1024x32_to_32x32x1024(StridedMemRefType<float, 3> *S,
