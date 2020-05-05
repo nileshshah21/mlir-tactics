@@ -324,7 +324,9 @@ func @contraction.abcd.aebf.fdec(%C: memref<32x32x32x32xf32>,
 func @mvt(%x1: memref<1024xf32>, %y1: memref<1024xf32>, %A: memref<1024x1024xf32>,
           %x2: memref<1024xf32>, %y2: memref<1024xf32>) {
 
-  // CHECK: @matvec_1024x1024x1024
+  // CHECK: %cst = constant 1.000000e+00 : f32
+  // CHECK: %0 = llvm.mlir.constant(0 : i32) : !llvm.i32
+  // CHECK: @matvec_1024x1024x1024(%{{.*}}, %{{.*}}, %{{.*}}, %cst, %cst, %0) 
   affine.for %i = 0 to 1024 {
     affine.for %j = 0 to 1024 {
       %0 = affine.load %x1[%i] : memref<1024xf32>
@@ -336,8 +338,8 @@ func @mvt(%x1: memref<1024xf32>, %y1: memref<1024xf32>, %A: memref<1024x1024xf32
     }
   }
 
-  // CHECK: @transpose_1024x1024_to_1024x1024
-  // CHECK: @matvec_1024x1024x1024
+  // CHECK: %1 = llvm.mlir.constant(1 : i32) : !llvm.i32
+  // CHECK: @matvec_1024x1024x1024(%{{.*}}, %{{.*}}, %{{.*}}, %cst, %cst, %1)
   affine.for %i = 0 to 1024 {
     affine.for %j = 0 to 1024 {
       %0 = affine.load %x1[%i] : memref<1024xf32>
@@ -355,7 +357,10 @@ func @mvtWithConstant(%arg0: memref<2000x2000xf32>,
                       %arg1: f32, %arg2: f32,
                       %arg7: memref<2000xf32>,
                       %arg8: memref<2000xf32>, %arg9: memref<2000xf32>) {
-    
+
+    // CHECK: %cst = constant 1.000000e+00 : f32
+    // CHECK: %0 = llvm.mlir.constant(1 : i32) : !llvm.i32
+    // CHECK: @matvec_2000x2000x2000(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %cst, %0) 
     affine.for %arg11 = 0 to 2000 {
       affine.for %arg12 = 0 to 2000 {
         %0 = affine.load %arg8[%arg11] : memref<2000xf32>
@@ -367,7 +372,8 @@ func @mvtWithConstant(%arg0: memref<2000x2000xf32>,
         affine.store %5, %arg8[%arg11] : memref<2000xf32>
       }
     }
-    // CHECK: @matvec_2000x2000x2000 
+    // CHECK: %1 = llvm.mlir.constant(0 : i32) : !llvm.i32
+    // CHECK: @matvec_2000x2000x2000(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %cst, %1) 
     affine.for %arg11 = 0 to 2000 {
       affine.for %arg12 = 0 to 2000 {
         %0 = affine.load %arg7[%arg11] : memref<2000xf32>
