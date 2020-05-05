@@ -181,6 +181,12 @@ def TENSORabaccb : Tactics<"C(a,b) += A(a,c) * B(c,b)", [
   eraseOpBuilder
 ]>;
 
+def TENSORabaccbWithConstant : Tactics<"C(i,j) += alpha * A(i,k) * B(k,j)", [
+  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"alpha">, Constant<"1">,
+                Inputs<["A", "B"]>, Outputs<["C"]>>,
+  eraseOpBuilder
+]>;
+
 // tensor ab-acd-dbc sizes 1024x1024 - 1024x32×32 - 32x1024×32
 def TENSORabacddbc : Tactics<"C(a, b) += A(a, c, d) * B(d, b, c)", [
   transposeBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
