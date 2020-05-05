@@ -387,3 +387,61 @@ func @mvtWithConstant(%arg0: memref<2000x2000xf32>,
     }
     return
 }
+
+func @distributed2mm(%arg0: memref<800x1100xf32>,
+                     %arg1: memref<1100x900xf32>,
+                     %arg2: memref<900x1200xf32>,
+                     %arg3: memref<800x1200xf32>,
+                     %arg4: f32, %arg5: f32,
+                     %arg6: memref<800x900xf32>) {
+    // CHECK: %cst_0 = constant 1.000000e+00 : f32
+    // D[i][j] *= beta
+    affine.for %arg7 = 0 to 800 {
+      affine.for %arg8 = 0 to 1200 {
+        %0 = affine.load %arg3[%arg7, %arg8] : memref<800x1200xf32>
+        %1 = mulf %arg5, %0 : f32
+        affine.store %1, %arg3[%arg7, %arg8] : memref<800x1200xf32>
+      }
+    }
+    // tmp[i][j] = 0
+    affine.for %arg7 = 0 to 800 {
+      affine.for %arg8 = 0 to 900 {
+        %cst = constant 0.000000e+00 : f32
+        affine.store %cst, %arg6[%arg7, %arg8] : memref<800x900xf32>
+      }
+    }
+    // tmp[i][j] += alpha * A[i][k] * B[k][j]
+    // CHECK: %3 = llvm.mlir.constant(0 : i32) : !llvm.i32
+    // CHECK: %4 = llvm.mlir.constant(0 : i32) : !llvm.i32
+    // CHECK: @matmul_800x900x1100(%3, %4, %{{.*}}, %{{.*}}, %{{.*}}, %arg4, %cst_0, %{{.*}}, %{{.*}}, %{{.*}})
+    affine.for %arg7 = 0 to 800 {
+      affine.for %arg8 = 0 to 900 {
+        affine.for %arg9 = 0 to 1100 {
+          %0 = affine.load %arg0[%arg7, %arg9] : memref<800x1100xf32>
+          %1 = affine.load %arg1[%arg9, %arg8] : memref<1100x900xf32>
+          %2 = affine.load %arg6[%arg7, %arg8] : memref<800x900xf32>
+          %3 = mulf %arg4, %0 : f32
+          %4 = mulf %3, %1 : f32
+          %5 = addf %2, %4 : f32
+          affine.store %5, %arg6[%arg7, %arg8] : memref<800x900xf32>
+        }
+      }
+    }
+    // D[i][j] += tmp[i][k] * C[k][j]
+    // CHECK: %8 = llvm.mlir.constant(0 : i32) : !llvm.i32
+    // CHECK: %9 = llvm.mlir.constant(0 : i32) : !llvm.i32
+    // CHECK: @matmul_800x1200x900(%8, %9, %{{.*}}, %{{.*}}, %{{.*}}, %cst_0, %cst_0, %{{.*}}, %{{.*}}, %{{.*}})
+    affine.for %arg7 = 0 to 800 {
+      affine.for %arg8 = 0 to 1200 {
+        affine.for %arg9 = 0 to 900 {
+          %0 = affine.load %arg6[%arg7, %arg9] : memref<800x900xf32>
+          %1 = affine.load %arg2[%arg9, %arg8] : memref<900x1200xf32>
+          %2 = affine.load %arg3[%arg7, %arg8] : memref<800x1200xf32>
+          %3 = mulf %0, %1 : f32
+          %4 = addf %2, %3 : f32
+          affine.store %4, %arg3[%arg7, %arg8] : memref<800x1200xf32>
+        }
+      }
+    }
+    return
+}
