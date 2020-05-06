@@ -262,7 +262,13 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
   }
   // linalg.
   emitMatmulLinalgHelpers(destBuff);
-  os << record_->getValueAsString("body");
+  os << formatv(
+      R"(
+    using namespace mlir::edsc;
+    using namespace mlir::edsc::ops;
+    ScopedContext scop(rewriter, op.getLoc());
+    linalg_generic_matmul(getOperandFromParamsMatmul());
+  )");
 }
 
 std::string BuilderEmitter::lookUpOperand(StringRef operand) const {
@@ -284,32 +290,9 @@ BuilderEmitter::lookUpOperands(std::vector<StringRef> operands) const {
   return lookupOperands;
 }
 
-void BuilderEmitter::emitTransposeHelpers() {
-  auto transposeBlasEntry = TransposeBlasEntry(record_);
-  auto input = transposeBlasEntry.inputs();
-  auto lookupInput = lookUpOperand(input);
-  auto permutation = transposeBlasEntry.permutation();
-
-  os << formatv(
-      R"(
-    auto getOperandFromParamsPermute = [&]() {
-      return {0};
-    };)",
-      lookupInput);
-
-  os << formatv(
-      R"(
-    auto getPermutationMapFromParamsPermute = []() {
-      return llvm::ArrayRef<unsigned>({0});
-    };)",
-      permutation);
-}
-
-void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
-  auto transposeBlasEntry = TransposeBlasEntry(record_);
-  auto input = transposeBlasEntry.inputs();
-  auto lookupOperand = lookUpOperand(input);
-  auto permutation = transposeBlasEntry.permutation();
+void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff,
+                                       std::string input,
+                                       std::string permutation) {
   // each transpose operation does the following:
   // 1. create a new memref, if "isEmitted" is assert.
   // 2. compose the function call and create a global
@@ -328,37 +311,43 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
     )",
-        lookupOperand, permutation, destBuff);
+        input, permutation, destBuff);
   }
   os << formatv(
       R"(
     createCallToMklTranspose(module, rewriter, op.getLoc(), {0}, {2}, {1}); 
   )",
-      lookupOperand, permutation, destBuff);
+      input, permutation, destBuff);
+}
+
+void BuilderEmitter::emitTransposeLinalg(std::string destBuff,
+                                         std::string input,
+                                         std::string permutation) {
+  os << record_->getValueAsString("body");
+  os << formatv(
+      R"(
+    auto permutationMap = mlir::AffineMap::getPermutationMap(
+      llvm::ArrayRef<unsigned>({2}), rewriter.getContext());
+    {0} = rewriter.create<mlir::linalg::TransposeOp>(
+      op.getLoc(), {1}, mlir::AffineMapAttr::get(permutationMap));
+    )",
+      destBuff, input, permutation);
 }
 
 void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
-  if (!clEmitBlasCpu) {
-    emitTransposeHelpers();
-    os << record_->getValueAsString("body");
-    os << formatv(
-        R"(
-    auto permutationMap = mlir::AffineMap::getPermutationMap(
-      getPermutationMapFromParamsPermute(), rewriter.getContext());
-    {0} = rewriter.create<mlir::linalg::TransposeOp>(
-      op.getLoc(), getOperandFromParamsPermute(), mlir::AffineMapAttr::get(permutationMap));
-    )",
-        destBuff);
-  } else
-    emitTransposeBlas(isEmitted, destBuff);
+  auto transposeBlasEntry = TransposeBlasEntry(record_);
+  auto input = transposeBlasEntry.inputs();
+  auto lookupOperand = lookUpOperand(input);
+  auto permutation = transposeBlasEntry.permutation();
+
+  if (!clEmitBlasCpu)
+    emitTransposeLinalg(destBuff, lookupOperand, permutation.str());
+  else
+    emitTransposeBlas(isEmitted, destBuff, lookupOperand, permutation.str());
 }
 
-void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
-  auto reshapeBlasEntry = ReshapeBlasEntry(record_);
-  auto input = reshapeBlasEntry.inputs();
-  auto lookupOperand = lookUpOperand(input);
-  auto indexMap = reshapeBlasEntry.map();
-
+void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff,
+                                     std::string input, std::string indexMap) {
   os << formatv(
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
@@ -371,20 +360,34 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff) {
       {0}.getType().dyn_cast<mlir::MemRefType>(), {1});
     {2} = rewriter.create<mlir::AllocOp>(op.getLoc(), tType).getResult();
   )",
-        lookupOperand, indexMap, destBuff);
+        input, indexMap, destBuff);
   }
   os << formatv(
       R"(
     createCallToMklReshape(module, rewriter, op.getLoc(), {0}, {1}); 
   )",
-      lookupOperand, destBuff);
+      input, destBuff);
+}
+
+void BuilderEmitter::emitReshapeLinalg(std::string destBuff, std::string input,
+                                       std::string indexMap) {
+  os << formatv(
+      R"(
+    {0} = createLinalgReshapeOp(rewriter, op.getLoc(), {1}, {2});
+    )",
+      destBuff, input, indexMap);
 }
 
 void BuilderEmitter::emitReshape(bool isEmitted, std::string destBuff) {
+  auto reshapeBlasEntry = ReshapeBlasEntry(record_);
+  auto input = reshapeBlasEntry.inputs();
+  auto lookupOperand = lookUpOperand(input);
+  auto indexMap = reshapeBlasEntry.map();
+
   if (!clEmitBlasCpu)
-    os << "assert(0);\n";
+    emitReshapeLinalg(destBuff, lookupOperand, indexMap.str());
   else
-    emitReshapeBlas(isEmitted, destBuff);
+    emitReshapeBlas(isEmitted, destBuff, lookupOperand, indexMap.str());
 }
 
 void BuilderEmitter::emitErase() { os << record_->getValueAsString("body"); }

@@ -117,12 +117,17 @@ private:
 
   // transpose builders/helpers.
   void emitTranspose(bool isEmitted, std::string destBuff);
-  void emitTransposeHelpers();
-  void emitTransposeBlas(bool isEmitted, std::string destBuff);
+  void emitTransposeBlas(bool isEmitted, std::string destBuff,
+                         std::string input, std::string permutation);
+  void emitTransposeLinalg(std::string destBuff, std::string input,
+                           std::string permuation);
 
   // reshape builders/helpers.
   void emitReshape(bool isEmitted, std::string destBuff);
-  void emitReshapeBlas(bool isEmitted, std::string destBuff);
+  void emitReshapeBlas(bool isEmitted, std::string destBuff, std::string input,
+                       std::string permutation);
+  void emitReshapeLinalg(std::string destBuff, std::string input,
+                         std::string permutation);
 
   // matvec builders/helpers.
   void emitMatvec(bool isEmitted, std::string destBuff);
