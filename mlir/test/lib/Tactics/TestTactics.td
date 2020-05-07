@@ -73,14 +73,7 @@ class matmulBuilder<Trans transa, Trans transb,
   // name.
   let name = "matmul";
   // body.  
-  let body = [{
-    
-    using namespace mlir::edsc;
-    using namespace mlir::edsc::ops;
-    ScopedContext scop(rewriter, op.getLoc());
-    linalg_generic_matmul(getOperandFromParamsMatmul());
-    
-  }];
+  let body = [{}];
   // is A transpose ?
   Trans transA = transa;
   // is B transpose ?
@@ -121,13 +114,7 @@ class transposeBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Builde
   // name.
   let name = "transpose";
   // body.
-  let body = [{
-    
-    using namespace mlir::edsc;
-    using namespace mlir::edsc::ops;
-    using namespace mlir::edsc::intrinsics;
-        
-  }];
+  let body = [{}];
   // input params.
   let inputs = ins;
   // output params.
