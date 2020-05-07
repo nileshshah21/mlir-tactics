@@ -1,7 +1,7 @@
 #ifndef HELPERS_GENERATION_TACTICS_CPU
 #define HELPERS_GENERATION_TACTICS_CPU
 
-#include "HelpersCommon.h"
+#include "HelpersLinalg.h"
 
 /*
   Helpers for tablegen code generation - cpu path.
@@ -115,12 +115,17 @@ llvm::SmallVector<int64_t, 8> applyIndexMap(llvm::ArrayRef<int64_t> shape,
   return result;
 }
 
-mlir::MemRefType getReshapedMemRef(mlir::MemRefType source,
-                                   llvm::ArrayRef<int64_t> indexMap) {
-  auto sourceMemRefShape = source.getShape();
-  auto res = mlir::MemRefType::get(applyIndexMap(sourceMemRefShape, indexMap),
-                                   source.getElementType(), {}, 0);
-  return res;
+mlir::MemRefType
+getReshapedMemRef(mlir::MemRefType source,
+                  llvm::ArrayRef<llvm::ArrayRef<int64_t>> indexMap) {
+  // TODO: this will be fixed in next commits.
+  /*
+    auto sourceMemRefShape = source.getShape();
+    auto res = mlir::MemRefType::get(applyIndexMap(sourceMemRefShape, indexMap),
+                                     source.getElementType(), {}, 0);
+    return res;
+  */
+  return nullptr;
 }
 
 std::string composeFunctionNameForMatmul(llvm::ArrayRef<mlir::Type> types) {
