@@ -118,7 +118,7 @@ private:
 
   // matmul builders/helpers.
   void emitMatmul(bool isEmitted, std::string destBuff);
-  void emitMatmulLinalgHelpers(std::string destBuff);
+  void emitMatmulLinalg(std::string destBuff);
   void emitMatmulBlas(std::string destBuff, Target t);
 
   // transpose builders/helpers.

@@ -153,7 +153,7 @@ StringRef MatmulBlasEntry::outputs() const {
   return res[0];
 }
 
-void BuilderEmitter::emitMatmulLinalgHelpers(std::string destBuff) {
+void BuilderEmitter::emitMatmulLinalg(std::string destBuff) {
   auto matmulEntry = MatmulBlasEntry(record_);
   auto inputs = matmulEntry.inputs();
   auto lookupOperands = lookUpOperands(inputs);
@@ -163,10 +163,9 @@ void BuilderEmitter::emitMatmulLinalgHelpers(std::string destBuff) {
   auto B = lookupOperands[1];
   os << formatv(
       R"(
-    auto getOperandFromParamsMatmul = [&]() {
-        llvm::SmallVector<mlir::Value, 3> res = { {0}, {1}, {2} };
-        return res;
-    };)",
+    mlir::edsc::ScopedContext scop(rewriter, op.getLoc());
+    mlir::edsc::ops::linalg_generic_matmul({0}, {1}, {2});
+    )",
       C, A, B);
 }
 
@@ -231,15 +230,7 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
     emitMatmulBlas(destBuff, Target::CPU);
     return;
   }
-  // linalg.
-  emitMatmulLinalgHelpers(destBuff);
-  os << formatv(
-      R"(
-    using namespace mlir::edsc;
-    using namespace mlir::edsc::ops;
-    ScopedContext scop(rewriter, op.getLoc());
-    linalg_generic_matmul(getOperandFromParamsMatmul());
-  )");
+  emitMatmulLinalg(destBuff);
 }
 
 void BuilderEmitter::emitMatvecBlas(std::string destBuff) {
@@ -324,7 +315,6 @@ void BuilderEmitter::emitTransposeBlas(bool isEmitted, std::string destBuff,
 void BuilderEmitter::emitTransposeLinalg(std::string destBuff,
                                          std::string input,
                                          std::string permutation) {
-  os << record_->getValueAsString("body");
   os << formatv(
       R"(
     auto permutationMap = mlir::AffineMap::getPermutationMap(
