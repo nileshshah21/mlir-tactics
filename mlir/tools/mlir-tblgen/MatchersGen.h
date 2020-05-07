@@ -93,6 +93,14 @@ private:
   std::map<std::string, std::string> symbolTable_;
 };
 
+struct MatvecTy {
+  std::string output;
+  std::vector<std::string> inputs;
+  std::string alpha;
+  std::string beta;
+  bool transA;
+};
+
 class BuilderEmitter {
 public:
   BuilderEmitter(llvm::Record *builder, bool lastBeforeEraseOp,
@@ -137,7 +145,8 @@ private:
 
   // matvec builders/helpers.
   void emitMatvec(bool isEmitted, std::string destBuff);
-  void emitMatvecBlas(std::string destBuff);
+  void emitMatvecBlas(MatvecTy &matvecInfo);
+  void emitMatvecLinalg(MatvecTy &matvecInfo);
 
   void emitErase();
 
