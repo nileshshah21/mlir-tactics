@@ -95,11 +95,17 @@ private:
 
 class BuilderEmitter {
 public:
-  BuilderEmitter(llvm::Record *builder, raw_ostream &os);
+  BuilderEmitter(llvm::Record *builder, bool lastBeforeEraseOp,
+                 raw_ostream &os);
   void emit();
 
 private:
   llvm::Record *record_;
+  // this flag tells the builder
+  // if he is the last one before
+  // eraseOp. It is necessary in the linalg
+  // path to avoid DCE by emitting a copyOp.
+  bool lastBeforeEraseOp_;
   llvm::raw_ostream &os;
 
   // lookup operands in symbol table.
