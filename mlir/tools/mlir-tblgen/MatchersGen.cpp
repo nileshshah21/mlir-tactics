@@ -31,8 +31,9 @@ template <> struct format_provider<identifierLine> {
 
 thread_local SymbolTableMap BuilderEmitter::symbolTable_;
 
-BuilderEmitter::BuilderEmitter(Record *record, raw_ostream &os)
-    : record_(record), os(os){};
+BuilderEmitter::BuilderEmitter(Record *record, bool lastBeforeEraseOp,
+                               raw_ostream &os)
+    : record_(record), lastBeforeEraseOp_(lastBeforeEraseOp), os(os){};
 
 // TODO: make name consistent map and permuation.
 StringRef ReshapeBlasEntry::map() const {
@@ -327,11 +328,25 @@ void BuilderEmitter::emitTransposeLinalg(std::string destBuff,
   os << formatv(
       R"(
     auto permutationMap = mlir::AffineMap::getPermutationMap(
-      llvm::ArrayRef<unsigned>({2}), rewriter.getContext());
-    {0} = rewriter.create<mlir::linalg::TransposeOp>(
-      op.getLoc(), {1}, mlir::AffineMapAttr::get(permutationMap));
+      llvm::ArrayRef<unsigned>({0}), rewriter.getContext());
     )",
-      destBuff, input, permutation);
+      permutation);
+  if (lastBeforeEraseOp_) {
+    os << formatv(
+        R"(
+    mlir::Value t = rewriter.create<mlir::linalg::TransposeOp>(
+      op.getLoc(), {0}, mlir::AffineMapAttr::get(permutationMap));
+    rewriter.create<mlir::linalg::CopyOp>(op.getLoc(), t, {1});
+    )",
+        input, destBuff);
+  } else {
+    os << formatv(
+        R"(
+    {1} = rewriter.create<mlir::linalg::TransposeOp>(
+      op.getLoc(), {0}, mlir::AffineMapAttr::get(permutationMap));
+    )",
+        input, destBuff);
+  }
 }
 
 void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
@@ -371,11 +386,20 @@ void BuilderEmitter::emitReshapeBlas(bool isEmitted, std::string destBuff,
 
 void BuilderEmitter::emitReshapeLinalg(std::string destBuff, std::string input,
                                        std::string indexMap) {
-  os << formatv(
-      R"(
-    {0} = createLinalgReshapeOp(rewriter, op.getLoc(), {1}, {2});
+  if (lastBeforeEraseOp_) {
+    os << formatv(
+        R"(
+    mlir::Value r = createLinalgReshapeOp(rewriter, op.getLoc(), {1}, {2}, {0});
+    rewriter.create<mlir::linalg::CopyOp>(op.getLoc(), r, {0});
     )",
-      destBuff, input, indexMap);
+        destBuff, input, indexMap);
+  } else {
+    os << formatv(
+        R"(
+    {0} = createLinalgReshapeOp(rewriter, op.getLoc(), {1}, {2}, {0});
+      )",
+        destBuff, input, indexMap);
+  }
 }
 
 void BuilderEmitter::emitReshape(bool isEmitted, std::string destBuff) {
@@ -415,7 +439,7 @@ void BuilderEmitter::emitPreamble(bool &isEmitted, std::string &dest,
     symbolTable_.updateOrInsert(output.str(), emittedVar);
     os << formatv(
         R"(
-    mlir::Value {0};
+    mlir::Value {0} = nullptr;
     )",
         emittedVar);
   }
@@ -803,8 +827,13 @@ void TacticsEmitter::emitMatchLogic(
 
 void TacticsEmitter::emitRewriteLogic() {
   auto builders = record_->getValueAsListOfDefs("builders");
+  size_t pos = 0;
   for (const auto builder : builders) {
-    BuilderEmitter(builder, os).emit();
+    if (pos == builders.size() - 2)
+      BuilderEmitter(builder, true, os).emit();
+    else
+      BuilderEmitter(builder, false, os).emit();
+    pos++;
   }
 }
 
