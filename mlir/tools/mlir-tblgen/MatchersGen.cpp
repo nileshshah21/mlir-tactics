@@ -165,14 +165,21 @@ bool isConstantOne(const std::string &s) {
   return number == 1;
 }
 
-void BuilderEmitter::emitMatmulLinalg(std::string destBuff) {
-  auto matmulEntry = MatmulBlasEntry(record_);
-  auto inputs = matmulEntry.inputs();
-  auto lookupOperands = lookUpOperands(inputs);
+void BuilderEmitter::emitMatmulLinalg(MatmulTy &mmi) {
+  auto C = mmi.output;
+  auto A = mmi.inputs[0];
+  auto B = mmi.inputs[1];
 
-  auto C = destBuff;
-  auto A = lookupOperands[0];
-  auto B = lookupOperands[1];
+  // if alpha or beta are not '1' we cannot
+  // emit linalg, as at the moment constants
+  // are not supported.
+  auto alpha = mmi.alpha;
+  auto beta = mmi.beta;
+  if (!isConstantOne(alpha) || !isConstantOne(beta)) {
+    os << "assert(0 && \"alpha and beta not supported for Linalg\");\n";
+    return;
+  }
+
   os << formatv(
       R"(
     mlir::edsc::ScopedContext scop(rewriter, op.getLoc());
@@ -181,21 +188,11 @@ void BuilderEmitter::emitMatmulLinalg(std::string destBuff) {
       C, A, B);
 }
 
-void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
-  auto matmulEntry = MatmulBlasEntry(record_);
-  auto alpha = matmulEntry.alpha();
-  auto beta = matmulEntry.beta();
-  auto dimForM = matmulEntry.dimensionForM();
-  auto dimForN = matmulEntry.dimensionForN();
-  auto dimForK = matmulEntry.dimensionForK();
-  auto transA = (matmulEntry.transA() == "N") ? false : true;
-  auto transB = (matmulEntry.transB() == "N") ? false : true;
-  auto inputs = matmulEntry.inputs();
+void BuilderEmitter::emitMatmulBlas(MatmulTy &mmi, Target t) {
 
-  auto lookupOperands = lookUpOperands(inputs);
-  auto C = destBuff;
-  auto A = lookupOperands[0];
-  auto B = lookupOperands[1];
+  auto C = mmi.output;
+  auto A = mmi.inputs[0];
+  auto B = mmi.inputs[1];
 
   switch (t) {
   case Target::CPU: {
@@ -204,9 +201,11 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
     auto module = op.getParentOfType<mlir::ModuleOp>();
     createCallToMklSgemm(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}, {9});
     )",
-        C, A, B, alpha, beta, transA, transB, dimForM, dimForN, dimForK);
+        C, A, B, mmi.alpha, mmi.beta, mmi.transA, mmi.transB, mmi.dimForM,
+        mmi.dimForN, mmi.dimForK);
     return;
   }
+  // TODO: handle alpha and beta for GPU.
   case Target::GPU: {
     os << formatv(
         R"(
@@ -234,15 +233,27 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
 void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
   assert((isEmitted == false) &&
          "matmul must not emit a new buffer - in-place computation");
+  auto matmulEntry = MatmulBlasEntry(record_);
+  MatmulTy mmi;
+  mmi.alpha = matmulEntry.alpha().str();
+  mmi.beta = matmulEntry.beta().str();
+  mmi.dimForM = matmulEntry.dimensionForM();
+  mmi.dimForN = matmulEntry.dimensionForN();
+  mmi.dimForK = matmulEntry.dimensionForK();
+  mmi.transA = (matmulEntry.transA() == "N") ? false : true;
+  mmi.transB = (matmulEntry.transB() == "N") ? false : true;
+  mmi.inputs = lookUpOperands(matmulEntry.inputs());
+  mmi.output = destBuff;
+
   if (clEmitBlasGpu) {
-    emitMatmulBlas(destBuff, Target::GPU);
+    emitMatmulBlas(mmi, Target::GPU);
     return;
   }
   if (clEmitBlasCpu) {
-    emitMatmulBlas(destBuff, Target::CPU);
+    emitMatmulBlas(mmi, Target::CPU);
     return;
   }
-  emitMatmulLinalg(destBuff);
+  emitMatmulLinalg(mmi);
 }
 
 void BuilderEmitter::emitMatvecBlas(MatvecTy &mvi) {

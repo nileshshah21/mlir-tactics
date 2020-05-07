@@ -101,6 +101,20 @@ struct MatvecTy {
   bool transA;
 };
 
+struct MatmulTy {
+  std::string output;
+  std::vector<std::string> inputs;
+  std::string alpha;
+  std::string beta;
+
+  bool transA;
+  bool transB;
+
+  int dimForM;
+  int dimForN;
+  int dimForK;
+};
+
 class BuilderEmitter {
 public:
   BuilderEmitter(llvm::Record *builder, bool lastBeforeEraseOp,
@@ -126,8 +140,8 @@ private:
 
   // matmul builders/helpers.
   void emitMatmul(bool isEmitted, std::string destBuff);
-  void emitMatmulLinalg(std::string destBuff);
-  void emitMatmulBlas(std::string destBuff, Target t);
+  void emitMatmulLinalg(MatmulTy &mmi);
+  void emitMatmulBlas(MatmulTy &mmi, Target t);
 
   // transpose builders/helpers.
   void emitTranspose(bool isEmitted, std::string destBuff);
