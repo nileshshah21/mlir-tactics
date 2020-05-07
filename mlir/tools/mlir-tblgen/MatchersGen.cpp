@@ -153,6 +153,18 @@ StringRef MatmulBlasEntry::outputs() const {
   return res[0];
 }
 
+bool isConstantOne(const std::string &s) {
+  if (s.empty())
+    return false;
+  auto isNumber = std::find_if(s.begin(), s.end(), [](unsigned char c) {
+                    return !std::isdigit(c);
+                  }) == s.end();
+  if (!isNumber)
+    return false;
+  int number = std::stoi(s);
+  return number == 1;
+}
+
 void BuilderEmitter::emitMatmulLinalg(std::string destBuff) {
   auto matmulEntry = MatmulBlasEntry(record_);
   auto inputs = matmulEntry.inputs();
@@ -233,34 +245,55 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
   emitMatmulLinalg(destBuff);
 }
 
-void BuilderEmitter::emitMatvecBlas(std::string destBuff) {
-  auto matvecEntry = MatvecBlasEntry(record_);
-  auto alpha = matvecEntry.alpha();
-  auto beta = matvecEntry.beta();
-  auto transA = (matvecEntry.transA() == "N") ? false : true;
-  auto inputs = matvecEntry.inputs();
-
-  auto lookupOperands = lookUpOperands(inputs);
-  auto x = destBuff;
-  auto A = lookupOperands[0];
-  auto y = lookupOperands[1];
+void BuilderEmitter::emitMatvecBlas(MatvecTy &mvi) {
+  auto x = mvi.output;
+  auto A = mvi.inputs[0];
+  auto y = mvi.inputs[1];
 
   os << formatv(
       R"(
     auto module = op.getParentOfType<mlir::ModuleOp>();
     createCallToMklSgemv(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4}, {5});
     )",
-      x, A, y, alpha, beta, transA);
+      x, A, y, mvi.alpha, mvi.beta, mvi.transA);
+}
+
+void BuilderEmitter::emitMatvecLinalg(MatvecTy &mvi) {
+  auto x = mvi.output;
+  auto A = mvi.inputs[0];
+  auto y = mvi.inputs[1];
+
+  // if alpha or beta are not '1' we cannot
+  // emit linalg, as at the moment constants
+  // are not supported.
+  auto alpha = mvi.alpha;
+  auto beta = mvi.beta;
+  if (!isConstantOne(alpha) || !isConstantOne(beta)) {
+    os << "assert(0 && \"alpha and beta not supported for Linalg\");\n";
+    return;
+  }
+
+  os << formatv(
+      R"(
+    rewriter.create<mlir::linalg::MatvecOp>(op.getLoc(), {0}, {1}, {2});
+    )",
+      A, y, x);
 }
 
 void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
   assert((isEmitted == false) &&
          "matvec must not create a new buffer - in-place operation");
-  // TODO: handle Linalg generation.
-  if (!clEmitBlasCpu)
-    os << "assert(0);\n";
+  auto matvecEntry = MatvecBlasEntry(record_);
+  MatvecTy mvi;
+  mvi.alpha = matvecEntry.alpha().str();
+  mvi.beta = matvecEntry.beta().str();
+  mvi.transA = (matvecEntry.transA() == "N") ? false : true;
+  mvi.inputs = lookUpOperands(matvecEntry.inputs());
+  mvi.output = destBuff;
+  if (clEmitBlasCpu)
+    emitMatvecBlas(mvi);
   else
-    emitMatvecBlas(destBuff);
+    emitMatvecLinalg(mvi);
 }
 
 std::string BuilderEmitter::lookUpOperand(StringRef operand) const {
