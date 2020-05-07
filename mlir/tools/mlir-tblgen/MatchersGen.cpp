@@ -220,6 +220,28 @@ void BuilderEmitter::emitMatmulBlas(std::string destBuff, Target t) {
   }
 }
 
+void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
+  assert((isEmitted == false) &&
+         "matmul must not emit a new buffer - in-place computation");
+  if (clEmitBlasGpu) {
+    emitMatmulBlas(destBuff, Target::GPU);
+    return;
+  }
+  if (clEmitBlasCpu) {
+    emitMatmulBlas(destBuff, Target::CPU);
+    return;
+  }
+  // linalg.
+  emitMatmulLinalgHelpers(destBuff);
+  os << formatv(
+      R"(
+    using namespace mlir::edsc;
+    using namespace mlir::edsc::ops;
+    ScopedContext scop(rewriter, op.getLoc());
+    linalg_generic_matmul(getOperandFromParamsMatmul());
+  )");
+}
+
 void BuilderEmitter::emitMatvecBlas(std::string destBuff) {
   auto matvecEntry = MatvecBlasEntry(record_);
   auto alpha = matvecEntry.alpha();
@@ -248,28 +270,6 @@ void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
     os << "assert(0);\n";
   else
     emitMatvecBlas(destBuff);
-}
-
-void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
-  assert((isEmitted == false) &&
-         "matmul must not emit a new buffer - in-place computation");
-  if (clEmitBlasGpu) {
-    emitMatmulBlas(destBuff, Target::GPU);
-    return;
-  }
-  if (clEmitBlasCpu) {
-    emitMatmulBlas(destBuff, Target::CPU);
-    return;
-  }
-  // linalg.
-  emitMatmulLinalgHelpers(destBuff);
-  os << formatv(
-      R"(
-    using namespace mlir::edsc;
-    using namespace mlir::edsc::ops;
-    ScopedContext scop(rewriter, op.getLoc());
-    linalg_generic_matmul(getOperandFromParamsMatmul());
-  )");
 }
 
 std::string BuilderEmitter::lookUpOperand(StringRef operand) const {
