@@ -58,7 +58,7 @@ getOrInsertFunction(mlir::PatternRewriter &rewriter, mlir::ModuleOp module,
 // name "name", create the array if necessary.
 mlir::Value getOrCreateGlobalArray(mlir::Location loc, mlir::OpBuilder &builder,
                                    llvm::StringRef name,
-                                   const llvm::ArrayRef<int> &values,
+                                   llvm::ArrayRef<int> values,
                                    mlir::ModuleOp module,
                                    mlir::LLVM::LLVMDialect *llvmDialect) {
   mlir::LLVM::GlobalOp global;

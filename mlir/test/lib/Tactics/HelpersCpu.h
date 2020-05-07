@@ -16,8 +16,7 @@ enum class FUNCTION {
   MATVEC,
 };
 
-std::string
-composeFunctionNameForTranspose(const llvm::ArrayRef<mlir::Type> &types) {
+std::string composeFunctionNameForTranspose(llvm::ArrayRef<mlir::Type> types) {
   std::string result = "transpose_";
   auto SShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
   auto DShape = types[1].dyn_cast<mlir::MemRefType>().getShape();
@@ -124,8 +123,7 @@ mlir::MemRefType getReshapedMemRef(mlir::MemRefType source,
   return res;
 }
 
-std::string
-composeFunctionNameForMatmul(const llvm::ArrayRef<mlir::Type> &types) {
+std::string composeFunctionNameForMatmul(llvm::ArrayRef<mlir::Type> types) {
   assert((types.size() == 3) && "expect 3 types");
   auto AShape = types[1].dyn_cast<mlir::MemRefType>().getShape();
   auto CShape = types[0].dyn_cast<mlir::MemRefType>().getShape();
@@ -135,8 +133,7 @@ composeFunctionNameForMatmul(const llvm::ArrayRef<mlir::Type> &types) {
   return result;
 }
 
-std::string
-composeFunctionNameForReshape(const llvm::ArrayRef<mlir::Type> &types) {
+std::string composeFunctionNameForReshape(llvm::ArrayRef<mlir::Type> types) {
   if (types.size() != 2)
     llvm_unreachable("expect single memref");
   std::string result = "reshape_";
@@ -152,8 +149,7 @@ composeFunctionNameForReshape(const llvm::ArrayRef<mlir::Type> &types) {
   return result;
 }
 
-std::string
-composeFunctionNameForMatvec(const llvm::ArrayRef<mlir::Type> &types) {
+std::string composeFunctionNameForMatvec(llvm::ArrayRef<mlir::Type> types) {
   assert((types.size() == 3) && "expect 3 types");
   auto AShape = (types[0].dyn_cast<mlir::MemRefType>().getShape().size() == 2)
                     ? types[0].dyn_cast<mlir::MemRefType>().getShape()
@@ -188,7 +184,7 @@ std::string composeFunctionCallName(FUNCTION id, const Args... args) {
 // the permutation array.
 mlir::Value
 getPermutationSizeAsConstantOp(mlir::Location loc, mlir::OpBuilder &builder,
-                               const llvm::ArrayRef<int> &permutation,
+                               llvm::ArrayRef<int> permutation,
                                mlir::LLVM::LLVMDialect *llvmDialect) {
   auto llvmInt32Type = mlir::LLVM::LLVMType::getInt32Ty(llvmDialect);
   mlir::Value size = builder.create<mlir::LLVM::ConstantOp>(
@@ -197,7 +193,7 @@ getPermutationSizeAsConstantOp(mlir::Location loc, mlir::OpBuilder &builder,
 }
 
 // return a unique name for the permuation array.
-std::string getPermutationArrayName(const llvm::ArrayRef<int> &perm) {
+std::string getPermutationArrayName(llvm::ArrayRef<int> perm) {
   std::string res = "permutation_";
   for (size_t i = 0; i < perm.size() - 1; i++)
     res += std::to_string(perm[i]) + "x";
