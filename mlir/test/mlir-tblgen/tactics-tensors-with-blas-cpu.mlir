@@ -267,11 +267,13 @@ func @contraction.abc.bda.dc(%C: memref<32x32x1024xf32>, %A: memref<32x1024x32xf
 
 func @contraction.abcd.aebf.dfce(%C: memref<32x32x32x32xf32>, 
                                  %A: memref<32x32x32x32xf32>, %B: memref<32x32x32x32xf32>) {
-  // CHECK: @transpose_32x32x32x32_to_32x32x32x32
-  // CHECK: @reshape_1024x32x32_to_1024x1024
-  // CHECK: @reshape_32x32x32x32_to_1024x32x32
+  // CHECK: @transpose_32x32x32x32_to_32x32x32x32(%arg1, %{{.*}}, %{{.*}}, %{{.*}})
+  // CHECK: @transpose_32x32x32x32_to_32x32x32x32(%arg2, %{{.*}}, %{{.*}}, %{{.*}})
+  // CHECK: @reshape_32x32x32x32_to_1024x1024(%arg0, %{{.*}})
+  // CHECK: @reshape_32x32x32x32_to_1024x1024(%0, %{{.*}})
+  // CHECK: @reshape_32x32x32x32_to_1024x1024(%3, %{{.*}})
   // CHECK: @matmul_1024x1024x1024
-  // CHECK: @reshape_1024x1024_to_32x32x32x32
+  // CHECK: @reshape_1024x1024_to_32x32x32x32({{.*}}, %arg0)
   affine.for %a = 0 to 32 {
     affine.for %b = 0 to 32 {
       affine.for %c = 0 to 32 {
@@ -295,11 +297,13 @@ func @contraction.abcd.aebf.dfce(%C: memref<32x32x32x32xf32>,
 
 func @contraction.abcd.aebf.fdec(%C: memref<32x32x32x32xf32>,
                                  %A: memref<32x32x32x32xf32>, %B: memref<32x32x32x32xf32>) {
-  // CHECK: @transpose_32x32x32x32_to_32x32x32x32
-  // CHECK: @reshape_32x32x32x32_to_1024x32x32
-  // CHECK: @reshape_1024x32x32_to_1024x1024
+  // CHECK: @transpose_32x32x32x32_to_32x32x32x32(%arg1, %{{.*}}, %{{.*}}, %{{.*}})
+  // CHECK: @transpose_32x32x32x32_to_32x32x32x32(%arg2, %{{.*}}, %{{.*}}, %{{.*}})
+  // CHECK: @reshape_32x32x32x32_to_1024x1024(%arg0, %{{.*}})
+  // CHECK: @reshape_32x32x32x32_to_1024x1024(%0, %{{.*}})
+  // CHECK: @reshape_32x32x32x32_to_1024x1024(%3, %{{.*}})
   // CHECK: @matmul_1024x1024x1024
-  // CHECK: @reshape_1024x1024_to_32x32x32x32
+  // CHECK: @reshape_1024x1024_to_32x32x32x32({{.*}}, %arg0) 
   affine.for %a = 0 to 32 {
     affine.for %b = 0 to 32 {
       affine.for %c = 0 to 32 {

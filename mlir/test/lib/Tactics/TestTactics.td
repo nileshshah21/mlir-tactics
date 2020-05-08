@@ -230,46 +230,28 @@ def TENSORabcdbadc : Tactics<"C(a, b, c) += A(b, d, a) * B(d, c)", [
 ]>;
 
 // tensor abcd-aebf-dfce 32×32×32x32 - 32×32×32x32 - 32×32x32x32
-// TODO: for each tensor we need two reshape operations to bring it 
-// from 4d to a 2d tensor. We may want to have a more complex reshape
-// builder which takes as input pair of dimensions to be reshaped. 
-// For example: 
-// reshapeBuilder<Inputs<["C"]>, Outputs<["G"]>, AffineExpression<"{0, 1}, {1, 2}">>
 def TENSORabcdaebfdfce : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(d, f, c, e)", [
   transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1, 3}">>,
   transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{3, 1, 2, 0}">>,
-  
-  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["F"]>, Outputs<["G"]>, AffineExpression<"{0, {1, 2}}">>, // C
-  
-  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["H"]>, Outputs<["I"]>, AffineExpression<"{0, {1, 2}}">>, // A
-  
-  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["L"]>, Outputs<["M"]>, AffineExpression<"{0, {1, 2}}">>, // B
-
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
   matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
-                Inputs<["I", "M"]>, Outputs<["G"]>>,
-  reshapeBuilder<Inputs<["G"]>, Outputs<["C"]>, AffineExpression<"{{0, 1}, 2}">>,
+                Inputs<["H", "L"]>, Outputs<["F"]>>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
   eraseOpBuilder
 ]>;
+
 
 def TENSORabcdaebffdec : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(f, d, e, c)", [
   transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1, 3}">>,
   transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{2, 0, 3, 1}">>,
-  
-  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["F"]>, Outputs<["G"]>, AffineExpression<"{0, {1, 2}}">>, // C
-  
-  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["H"]>, Outputs<["I"]>, AffineExpression<"{0, {1, 2}}">>, // A
-  
-  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["L"]>, Outputs<["M"]>, AffineExpression<"{0, {1, 2}}">>, // B
-
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
   matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
-                Inputs<["I", "M"]>, Outputs<["G"]>>,
-  reshapeBuilder<Inputs<["G"]>, Outputs<["C"]>, AffineExpression<"{{0, 1}, 2}">>,
+                Inputs<["H", "L"]>, Outputs<["F"]>>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
   eraseOpBuilder
 ]>;
 
