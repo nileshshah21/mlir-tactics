@@ -449,3 +449,203 @@ func @distributed2mm(%arg0: memref<800x1100xf32>,
     }
     return
 }
+
+func @distributed_gessumv(%arg0: memref<1300x1300xf32>, 
+                          %arg1: memref<1300x1300xf32>, 
+                          %arg2: f32, %arg3: f32, 
+                          %arg4: memref<1300xf32>, %arg5: memref<1300xf32>, 
+                          %arg6: memref<1300xf32>) {
+  // tmp[i] = 0;
+  affine.for %arg7 = 0 to 1300 {
+    %cst = constant 0.000000e+00 : f32
+    affine.store %cst, %arg6[%arg7] : memref<1300xf32>
+  }
+  // y[i] = 0;
+  affine.for %arg7 = 0 to 1300 {
+    %cst = constant 0.000000e+00 : f32
+    affine.store %cst, %arg4[%arg7] : memref<1300xf32>
+  }
+  // y[i] = B[i][j] * x[j] + y[i]
+  // CHECK: %0 = llvm.mlir.constant(0 : i32) : !llvm.i32
+  // CHECK: @matvec_1300x1300x1300(%arg4, %arg0, %arg5, %cst_0, %cst_0, %0)
+  affine.for %arg7 = 0 to 1300 {
+    affine.for %arg8 = 0 to 1300 {
+      %0 = affine.load %arg0[%arg7, %arg8] : memref<1300x1300xf32>
+      %1 = affine.load %arg5[%arg8] : memref<1300xf32>
+      %2 = mulf %0, %1 : f32
+      %3 = affine.load %arg4[%arg7] : memref<1300xf32>
+      %4 = addf %3, %2 : f32
+      affine.store %4, %arg4[%arg7] : memref<1300xf32>
+    }
+  }
+  // tmp[i] = A[i][j] * x[j] + tmp[i]
+  // CHECK: llvm.mlir.constant(0 : i32) : !llvm.i32
+  // CHECK: @matvec_1300x1300x1300(%arg6, %arg1, %arg5, %cst_0, %cst_0, %1)
+  affine.for %arg7 = 0 to 1300 {
+    affine.for %arg8 = 0 to 1300 {
+      %0 = affine.load %arg1[%arg7, %arg8] : memref<1300x1300xf32>
+      %1 = affine.load %arg5[%arg8] : memref<1300xf32>
+      %2 = mulf %0, %1 : f32
+      %3 = affine.load %arg6[%arg7] : memref<1300xf32>
+      %4 = addf %3, %2 : f32
+      affine.store %4, %arg6[%arg7] : memref<1300xf32>
+    }
+  }
+  // y[i] = alpha * tmp[i] + beta * y[i]
+  affine.for %arg7 = 0 to 1300 {
+    %0 = affine.load %arg4[%arg7] : memref<1300xf32>
+    %1 = mulf %arg2, %0 : f32
+    %2 = affine.load %arg6[%arg7] : memref<1300xf32>
+    %3 = mulf %arg3, %2 : f32
+    %4 = addf %1, %3 : f32
+    affine.store %4, %arg6[%arg7] : memref<1300xf32>
+  }
+  return
+}
+
+func @gemver(%arg0: memref<1024x1024xf32>, 
+             %arg1: f32, %arg2: f32, 
+             %arg3: memref<1024xf32>, %arg4: memref<1024xf32>, 
+             %arg5: memref<1024xf32>, %arg6: memref<1024xf32>, 
+             %arg7: memref<1024xf32>, %arg8: memref<1024xf32>, 
+             %arg9: memref<1024xf32>, %arg10: memref<1024xf32>) {
+  // A[i][j] = A[i][j] + u1[i] * V1[j] + u2[i] * v2[j]
+  affine.for %arg11 = 0 to 1024 {
+    affine.for %arg12 = 0 to 1024 {
+      %0 = affine.load %arg0[%arg11, %arg12] : memref<1024x1024xf32>
+      %1 = affine.load %arg3[%arg11] : memref<1024xf32>
+      %2 = affine.load %arg5[%arg12] : memref<1024xf32>
+      %3 = mulf %1, %2 : f32
+      %4 = addf %0, %3 : f32
+      %5 = affine.load %arg4[%arg11] : memref<1024xf32>
+      %6 = affine.load %arg6[%arg12] : memref<1024xf32>
+      %7 = mulf %5, %6 : f32
+      %8 = addf %4, %7 : f32
+      affine.store %8, %arg0[%arg11, %arg12] : memref<1024x1024xf32>
+    }
+  }
+  // x[i] = x[i] + beta * A[j][i] * y[j]
+  // CHECK: %0 = llvm.mlir.constant(1 : i32) : !llvm.i32
+  // CHECK: @matvec_1024x1024x1024(%arg8, %arg0, %arg9, %arg2, %cst, %0)
+  affine.for %arg11 = 0 to 1024 {
+    affine.for %arg12 = 0 to 1024 {
+      %0 = affine.load %arg8[%arg11] : memref<1024xf32>
+      %1 = affine.load %arg0[%arg12, %arg11] : memref<1024x1024xf32>
+      %2 = mulf %arg2, %1 : f32
+      %3 = affine.load %arg9[%arg12] : memref<1024xf32>
+      %4 = mulf %2, %3 : f32
+      %5 = addf %0, %4 : f32
+      affine.store %5, %arg8[%arg11] : memref<1024xf32>
+    }
+  }
+  // x[i] = x[i] + z[i]
+  affine.for %arg11 = 0 to 1024 {
+    %0 = affine.load %arg8[%arg11] : memref<1024xf32>
+    %1 = affine.load %arg10[%arg11] : memref<1024xf32>
+    %2 = addf %0, %1 : f32
+    affine.store %2, %arg8[%arg11] : memref<1024xf32>
+  }
+  // w[i] = w[i] + alpha * A[i][j] * x[j]
+  // CHECK: %1 = llvm.mlir.constant(0 : i32) : !llvm.i32
+  // CHECK: @matvec_1024x1024x1024(%arg7, %arg0, %arg8, %arg1, %cst, %1)
+  affine.for %arg11 = 0 to 1024 {
+    affine.for %arg12 = 0 to 1024 {
+      %0 = affine.load %arg7[%arg11] : memref<1024xf32>
+      %1 = affine.load %arg0[%arg11, %arg12] : memref<1024x1024xf32>
+      %2 = mulf %arg1, %1 : f32
+      %3 = affine.load %arg8[%arg12] : memref<1024xf32>
+      %4 = mulf %2, %3 : f32
+      %5 = addf %0, %4 : f32
+      affine.store %5, %arg7[%arg11] : memref<1024xf32>
+    }
+  }
+  return
+}
+
+func @atax(%arg0: memref<1900x2100xf32>, 
+           %arg1: memref<1900xf32>, %arg2: memref<2100xf32>, 
+           %arg3: memref<2100xf32>) {
+  // CHECK: %cst_0 = constant 1.000000e+00 : f32
+  // tmp[i] = 0
+  affine.for %arg4 = 0 to 1900 {
+    %cst = constant 0.000000e+00 : f32
+    affine.store %cst, %arg1[%arg4] : memref<1900xf32>
+  }
+  // y[i] = 0  
+  affine.for %arg4 = 0 to 2100 {
+    %cst = constant 0.000000e+00 : f32
+    affine.store %cst, %arg3[%arg4] : memref<2100xf32>
+  }
+  // tmp[i] = tmp[i] + A[i][j] * x[j]
+  // CHECK: %0 = llvm.mlir.constant(0 : i32) : !llvm.i32
+  // CHECK: @matvec_1900x2100x2100(%arg1, %arg0, %arg2, %cst_0, %cst_0, %0)
+  affine.for %arg4 = 0 to 1900 {
+    affine.for %arg5 = 0 to 2100 {
+      %0 = affine.load %arg1[%arg4] : memref<1900xf32>
+      %1 = affine.load %arg0[%arg4, %arg5] : memref<1900x2100xf32>
+      %2 = affine.load %arg2[%arg5] : memref<2100xf32>
+      %3 = mulf %1, %2 : f32
+      %4 = addf %0, %3 : f32
+      affine.store %4, %arg1[%arg4] : memref<1900xf32>
+    }
+  }
+  // y[j] = y[j] + A[i][j] * tmp[i]
+  // CHECK: %1 = llvm.mlir.constant(1 : i32) : !llvm.i32
+  // CHECK: @matvec_1900x2100x1900(%arg3, %arg0, %arg1, %cst_0, %cst_0, %1)
+  affine.for %arg4 = 0 to 1900 {
+    affine.for %arg5 = 0 to 2100 {
+      %0 = affine.load %arg3[%arg5] : memref<2100xf32>
+      %1 = affine.load %arg0[%arg4, %arg5] : memref<1900x2100xf32>
+      %2 = affine.load %arg1[%arg4] : memref<1900xf32>
+      %3 = mulf %1, %2 : f32
+      %4 = addf %0, %3 : f32
+      affine.store %4, %arg3[%arg5] : memref<2100xf32>
+    }
+  }
+  return
+}
+
+func @bicg(%arg0: memref<2100x1900xf32>, 
+           %arg1: memref<1900xf32>, %arg2: memref<2100xf32>, 
+           %arg3: memref<2100xf32>, %arg4: memref<1900xf32>) {
+  // CHECK: %cst_0 = constant 1.000000e+00 : f32
+  // q[i] = 0
+  affine.for %arg5 = 0 to 2100 {
+    %cst = constant 0.000000e+00 : f32
+    affine.store %cst, %arg2[%arg5] : memref<2100xf32>
+  }
+  // s[i] = 0
+  affine.for %arg5 = 0 to 1900 {
+    %cst = constant 0.000000e+00 : f32
+    affine.store %cst, %arg4[%arg5] : memref<1900xf32>
+  }
+  // s[j] = s[j] + r[i] * A[i][j]
+  // Here we don't detect as the tactis for gemv
+  // is -> x(i) += A(i, j)T * y(j).
+  // Adding the following tactic will solve
+  // the issue: s(i) += r(j) * A(i, j)
+  affine.for %arg5 = 0 to 2100 {
+    affine.for %arg6 = 0 to 1900 {
+      %0 = affine.load %arg4[%arg6] : memref<1900xf32>
+      %1 = affine.load %arg3[%arg5] : memref<2100xf32>
+      %2 = affine.load %arg0[%arg5, %arg6] : memref<2100x1900xf32>
+      %3 = mulf %1, %2 : f32
+      %4 = addf %0, %3 : f32
+      affine.store %4, %arg4[%arg6] : memref<1900xf32>
+    }
+  }
+  // q[i] = q[i] + A[i][j] * p[j]
+  // CHECK: %0 = llvm.mlir.constant(0 : i32) : !llvm.i32
+  // CHECK: @matvec_2100x1900x1900(%arg2, %arg0, %arg1, %cst_0, %cst_0, %0)
+  affine.for %arg5 = 0 to 2100 {
+    affine.for %arg6 = 0 to 1900 {
+      %0 = affine.load %arg2[%arg5] : memref<2100xf32>
+      %1 = affine.load %arg0[%arg5, %arg6] : memref<2100x1900xf32>
+      %2 = affine.load %arg1[%arg6] : memref<1900xf32>
+      %3 = mulf %1, %2 : f32
+      %4 = addf %0, %3 : f32
+      affine.store %4, %arg2[%arg5] : memref<2100xf32>
+    }
+  }
+  return
+}
