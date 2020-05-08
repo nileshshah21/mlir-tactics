@@ -15,30 +15,30 @@ createLinalgReshapeOp(mlir::OpBuilder &builder, mlir::Location loc,
                       llvm::ArrayRef<llvm::ArrayRef<int64_t>> reshapeMap,
                       mlir::Value destination) {
   assert(reshapeMap.size() == 2 && "expect two vectors");
-  auto indexToRemap = reshapeMap[0];
-  auto indexFree = reshapeMap[1];
-  assert(indexToRemap.size() && "must be non empty");
-  assert(indexFree.size() && "must be non empty");
+  auto indexPartitionOne = reshapeMap[0];
+  auto indexPartitionTwo = reshapeMap[1];
+  assert(indexPartitionOne.size() && "must be non empty");
+  assert(indexPartitionTwo.size() && "must be non empty");
 
   mlir::edsc::ScopedContext scope(builder, loc);
   auto ctx = input.getContext();
-  llvm::SmallVector<mlir::AffineExpr, 4> dimToRemap;
-  llvm::SmallVector<mlir::AffineExpr, 4> dimFree;
+  llvm::SmallVector<mlir::AffineExpr, 4> dimPartitionOne;
+  llvm::SmallVector<mlir::AffineExpr, 4> dimPartitionTwo;
 
   // create affine exprs using the position
-  // specified in the 'indexToRemap' and 'indexFree'
+  // specified in the 'indexPartitionOne' and 'indexPartitionTwo'
   // arrays.
-  size_t size = indexToRemap.size();
+  size_t size = indexPartitionOne.size();
   for (size_t i = 0; i < size; i++) {
     mlir::AffineExpr expr;
-    bindDims(ctx, expr, static_cast<int>(indexToRemap[i]));
-    dimToRemap.push_back(expr);
+    bindDims(ctx, expr, static_cast<int>(indexPartitionOne[i]));
+    dimPartitionOne.push_back(expr);
   }
-  size = indexFree.size();
+  size = indexPartitionTwo.size();
   for (size_t i = 0; i < size; i++) {
     mlir::AffineExpr expr;
-    bindDims(ctx, expr, static_cast<int>(indexFree[i]));
-    dimFree.push_back(expr);
+    bindDims(ctx, expr, static_cast<int>(indexPartitionTwo[i]));
+    dimPartitionTwo.push_back(expr);
   }
 
   // check if the destination is not null, if so
@@ -50,29 +50,29 @@ createLinalgReshapeOp(mlir::OpBuilder &builder, mlir::Location loc,
 
   // the dimension are expected to be in ascending order.
   // Thus if the reshapeMap contains the '0' dimension
-  // we group {dimToRemap, {dimFree}}. If the '0' dimension
-  // is *not* in reshapeMap, we group {dimFree, {dimToRemap}}.
+  // we group {dimPartitionOne, {dimPartitionTwo}}. If the '0' dimension
+  // is *not* in reshapeMap, we group {dimPartitionTwo, {dimPartitionOne}}.
   // TODO: find better way to express these conditions.
-  if (std::find(indexToRemap.begin(), indexToRemap.end(), 0) !=
-      indexToRemap.end()) {
+  if (std::find(indexPartitionOne.begin(), indexPartitionOne.end(), 0) !=
+      indexPartitionOne.end()) {
     if (destinationType)
       return mlir::edsc::intrinsics::linalg_reshape(
           destinationType, input,
-          llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimToRemap,
-                                                           {dimFree}});
+          llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimPartitionOne,
+                                                           {dimPartitionTwo}});
     else
       return mlir::edsc::intrinsics::linalg_reshape(
-          input, llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimToRemap,
-                                                                  {dimFree}});
+          input, llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{
+                     dimPartitionOne, {dimPartitionTwo}});
   }
   if (destinationType)
     return mlir::edsc::intrinsics::linalg_reshape(
         destinationType, input,
-        llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimFree,
-                                                         {dimToRemap}});
+        llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimPartitionTwo,
+                                                         {dimPartitionOne}});
   return mlir::edsc::intrinsics::linalg_reshape(
-      input,
-      llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimToRemap, {dimFree}});
+      input, llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{
+                 dimPartitionOne, {dimPartitionTwo}});
 }
 
 } // end namespace
