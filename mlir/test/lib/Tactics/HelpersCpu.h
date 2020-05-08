@@ -50,82 +50,188 @@ mlir::MemRefType getTransposedMemref(mlir::MemRefType source,
   return res;
 }
 
-// check that the elements in the vector are consecutive
-// integer.
-// {1, 2} -> ok
-// {1, 1} not ok. (we cannot use std::is_sorted)
-bool areConsecutive(llvm::ArrayRef<int64_t> indexMap) {
-  bool isTrue = true;
-  for (size_t i = 1; i < indexMap.size(); i++) {
-    if (indexMap[i] != indexMap[i - 1] + 1) {
-      isTrue = false;
-      break;
+/// Detect whether memref dims [dim, dim + extent) can be reshaped without
+/// copies.
+bool isReshapableDimBand(unsigned dim, unsigned extent,
+                         llvm::ArrayRef<int64_t> sizes,
+                         llvm::ArrayRef<mlir::AffineExpr> strides) {
+  assert(sizes.size() == strides.size() && "mismatched ranks");
+  // off by 1 indexing to avoid out of bounds
+  //                       V
+  for (auto idx = dim, e = dim + extent; idx + 1 < e; ++idx) {
+    // Only bands of static shapes are reshapable. This is due to the fact that
+    // there is no relation between dynamic sizes and dynamic strides: we do not
+    // have enough information to know whether a "-1" size corresponds to the
+    // proper symbol in the AffineExpr of a stride.
+    if (mlir::ShapedType::isDynamic(sizes[dim + 1]))
+      return false;
+    // TODO(ntv) Refine this by passing the proper nDims and nSymbols so we can
+    // simplify on the fly and catch more reshapable cases.
+    if (strides[idx] != strides[idx + 1] * sizes[idx + 1])
+      return false;
+  }
+  return true;
+}
+
+bool isReassociationValid(llvm::ArrayRef<mlir::AffineMap> reassociation,
+                          int *invalidIndex = nullptr) {
+  if (reassociation.empty())
+    return true;
+  unsigned nDims = reassociation[0].getNumDims();
+  unsigned nextExpectedDim = 0;
+  for (auto it : llvm::enumerate(reassociation)) {
+    auto m = it.value();
+    if (m.getNumDims() != nDims || m.getNumSymbols() != 0) {
+      if (invalidIndex)
+        *invalidIndex = it.index();
+      return false;
+    }
+    for (auto e : m.getResults()) {
+      auto d = e.dyn_cast<mlir::AffineDimExpr>();
+      if (!d || d.getPosition() != nextExpectedDim++) {
+        if (invalidIndex)
+          *invalidIndex = it.index();
+        return false;
+      }
     }
   }
-  return isTrue;
+  if (nextExpectedDim != nDims) {
+    if (invalidIndex)
+      *invalidIndex = reassociation.size() - 1;
+    return false;
+  }
+  return true;
 }
 
-// get dimensions not involved in the reshape operation.
-llvm::SmallVector<int64_t, 8>
-getOtherDimensions(size_t numberOfDims, llvm::ArrayRef<int64_t> indexMap) {
-  assert(areConsecutive(indexMap) && "expect consecutive dimensions");
-  llvm::SmallVector<int64_t, 8> allIndexes;
-  // create array containing all indexes for each dimension.
-  // (i.e., for numberOfDims = 3 -> {0, 1, 2}
-  int64_t dim = 0;
-  for (size_t i = 0; i < numberOfDims; i++)
-    allIndexes.push_back(dim++);
-  // subtract to allIndexes
-  // the indexes of the dimensions to be reshaped.
-  llvm::SmallVector<int64_t, 8> difference{};
-  std::set_difference(allIndexes.begin(), allIndexes.end(), indexMap.begin(),
-                      indexMap.end(), std::back_inserter(difference));
-  return difference;
+/// Compute the MemRefType obtained by applying the `reassociation` (which is
+/// expected to be valid) to `type`.
+/// If `type` is Contiguous MemRefType, this always produce a contiguous
+/// MemRefType.
+mlir::MemRefType
+computeReshapeCollapsedType(mlir::MemRefType type,
+                            llvm::ArrayRef<mlir::AffineMap> reassociation) {
+  auto sizes = type.getShape();
+  mlir::AffineExpr offset;
+  llvm::SmallVector<mlir::AffineExpr, 4> strides;
+  auto status = getStridesAndOffset(type, strides, offset);
+  (void)status;
+  assert(succeeded(status) && "expected strided memref");
+
+  llvm::SmallVector<int64_t, 4> newSizes;
+  newSizes.reserve(reassociation.size());
+  llvm::SmallVector<mlir::AffineExpr, 4> newStrides;
+  newStrides.reserve(reassociation.size());
+
+  // Use the fact that reassociation is valid to simplify the logic: only use
+  // each map's rank.
+  assert(isReassociationValid(reassociation) && "invalid reassociation");
+  unsigned currentDim = 0;
+  for (mlir::AffineMap m : reassociation) {
+    unsigned dim = m.getNumResults();
+    int64_t size = 1;
+    mlir::AffineExpr stride = strides[currentDim + dim - 1];
+    if (!isReshapableDimBand(currentDim, dim, sizes, strides)) {
+      size = mlir::ShapedType::kDynamicSize;
+      stride = mlir::AffineExpr();
+    } else {
+      for (unsigned d = 0; d < dim; ++d)
+        size *= sizes[currentDim + d];
+    }
+    newSizes.push_back(size);
+    newStrides.push_back(stride);
+    currentDim += dim;
+  }
+
+  // Early-exit: if `type` is contiguous, the result must be contiguous.
+  if (canonicalizeStridedLayout(type).getAffineMaps().empty())
+    return mlir::MemRefType::Builder(type).setShape(newSizes).setAffineMaps({});
+
+  // Convert back to int64_t because we don't have enough information to create
+  // new strided layouts from AffineExpr only. This corresponds to a case where
+  // copies may be necessary.
+  int64_t intOffset = mlir::ShapedType::kDynamicStrideOrOffset;
+  if (auto o = offset.dyn_cast<mlir::AffineConstantExpr>())
+    intOffset = o.getValue();
+  llvm::SmallVector<int64_t, 4> intStrides;
+  intStrides.reserve(strides.size());
+  for (auto stride : newStrides) {
+    if (auto cst = stride.dyn_cast_or_null<mlir::AffineConstantExpr>())
+      intStrides.push_back(cst.getValue());
+    else
+      intStrides.push_back(mlir::ShapedType::kDynamicStrideOrOffset);
+  }
+  auto layout =
+      makeStridedLinearLayoutMap(intStrides, intOffset, type.getContext());
+  return canonicalizeStridedLayout(
+      mlir::MemRefType::Builder(type).setShape(newSizes).setAffineMaps(
+          {layout}));
 }
 
-llvm::SmallVector<int64_t, 8> applyIndexMap(llvm::ArrayRef<int64_t> shape,
-                                            llvm::ArrayRef<int64_t> indexMap) {
-  assert((shape.size() > indexMap.size()) && "shape must be > than indexMap");
-
-  llvm::SmallVector<int64_t, 8> result{};
-  assert((areConsecutive(indexMap)) && "expect consecutive elements");
-  int64_t newDim = 1;
-  for (size_t i = 0; i < indexMap.size(); i++) {
-    newDim *= shape[indexMap[i]];
+template <typename AffineExprTy>
+unsigned
+getMaxPosOfType(llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>> exprArrays) {
+  unsigned pos = 0;
+  for (auto exprs : exprArrays) {
+    for (auto expr : exprs) {
+      expr.walk([&pos](mlir::AffineExpr e) {
+        if (auto d = e.dyn_cast<AffineExprTy>())
+          pos = std::max(pos, d.getPosition());
+      });
+    }
   }
-  auto dimensionNotInIndexMap = getOtherDimensions(shape.size(), indexMap);
+  return pos;
+}
 
-  assert((dimensionNotInIndexMap.size() >= 1) && "expect at least one element");
-  assert((indexMap.size() >= 1) && "expect at least one element");
-
-  if (dimensionNotInIndexMap[0] < indexMap[0]) {
-    for (const auto dim : dimensionNotInIndexMap)
-      result.push_back(shape[dim]);
-    result.push_back(newDim);
-    return result;
+llvm::SmallVector<mlir::AffineMap, 4> getSymbolLessAffineMaps(
+    llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>> reassociation) {
+  unsigned maxDim = getMaxPosOfType<mlir::AffineDimExpr>(reassociation);
+  assert(getMaxPosOfType<mlir::AffineSymbolExpr>(reassociation) == 0 &&
+         "Expected symbol-less expressions");
+  llvm::SmallVector<mlir::AffineMap, 4> maps;
+  maps.reserve(reassociation.size());
+  for (auto exprs : reassociation) {
+    assert(exprs.size() != 0);
+    maps.push_back(
+        mlir::AffineMap::get(maxDim + 1, 0, exprs, exprs[0].getContext()));
   }
-
-  if (dimensionNotInIndexMap[0] > indexMap[0]) {
-    result.push_back(newDim);
-    for (const auto dim : dimensionNotInIndexMap)
-      result.push_back(shape[dim]);
-    return result;
-  }
-  assert(0 && "dimensionNotInIndexMap and indexMap cannot have same element");
-  return result;
+  return maps;
 }
 
 mlir::MemRefType
 getReshapedMemRef(mlir::MemRefType source,
-                  llvm::ArrayRef<llvm::ArrayRef<int64_t>> indexMap) {
-  // TODO: this will be fixed in next commits.
-  /*
-    auto sourceMemRefShape = source.getShape();
-    auto res = mlir::MemRefType::get(applyIndexMap(sourceMemRefShape, indexMap),
-                                     source.getElementType(), {}, 0);
-    return res;
-  */
-  return nullptr;
+                  llvm::ArrayRef<llvm::ArrayRef<int64_t>> reshapeMap) {
+  assert(reshapeMap.size() == 2 && "expect two partition");
+  auto indexPartitionOne = reshapeMap[0];
+  auto indexPartitionTwo = reshapeMap[1];
+  assert(indexPartitionOne.size() && "must be non empty");
+  assert(indexPartitionTwo.size() && "must be non empty");
+  llvm::SmallVector<mlir::AffineExpr, 4> dimPartitionOne;
+  llvm::SmallVector<mlir::AffineExpr, 4> dimPartitionTwo;
+
+  auto ctx = source.getContext();
+  // create affine exprs using the position
+  // specified in the 'indexPartitionOne' and 'indexPartitionTwo'
+  // arrays.
+  size_t size = indexPartitionOne.size();
+  for (size_t i = 0; i < size; i++) {
+    mlir::AffineExpr expr;
+    bindDims(ctx, expr, static_cast<int>(indexPartitionOne[i]));
+    dimPartitionOne.push_back(expr);
+  }
+  size = indexPartitionTwo.size();
+  for (size_t i = 0; i < size; i++) {
+    mlir::AffineExpr expr;
+    bindDims(ctx, expr, static_cast<int>(indexPartitionTwo[i]));
+    dimPartitionTwo.push_back(expr);
+  }
+  llvm::SmallVector<mlir::AffineMap, 4> maps;
+  if (std::find(indexPartitionOne.begin(), indexPartitionOne.end(), 0) !=
+      indexPartitionOne.end())
+    maps = getSymbolLessAffineMaps({dimPartitionOne, {dimPartitionTwo}});
+  else
+    maps = getSymbolLessAffineMaps({{dimPartitionTwo}, dimPartitionOne});
+
+  return computeReshapeCollapsedType(source, maps);
 }
 
 std::string composeFunctionNameForMatmul(llvm::ArrayRef<mlir::Type> types) {
