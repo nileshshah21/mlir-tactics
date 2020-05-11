@@ -54,11 +54,11 @@ func @main() {
   call @scop_entry(%A, %tmp, %x, %y) :
     (memref<2000x2000xf32>, memref<2000xf32>, memref<2000xf32>, memref<2000xf32>) -> ()
   call @stop_timer() : () -> ()
+  %pTmp = memref_cast %tmp : memref<2000xf32> to memref<*xf32>
+  //call @print_memref_f32(%pTmp) : (memref<*xf32>) -> ()
   return
 }
 
 func @start_timer()
 func @stop_timer()
-
-  
-  
+func @print_memref_f32(memref<*xf32>)

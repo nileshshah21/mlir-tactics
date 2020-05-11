@@ -79,12 +79,12 @@ func @main() {
     (memref<2000x2000xf32>, f32, f32, memref<2000xf32>, memref<2000xf32>,
      memref<2000xf32>, memref<2000xf32>, memref<2000xf32>, memref<2000xf32>, 
      memref<2000xf32>, memref<2000xf32>) -> ()
+  %px = memref_cast %x : memref<2000xf32> to memref<*xf32>
+  //call @print_memref_f32(%px) : (memref<*xf32>) -> ()
   call @stop_timer() : () -> ()
   return
 }
 
 func @start_timer()
 func @stop_timer()
-
-  
-  
+func @print_memref_f32(memref<*xf32>)
