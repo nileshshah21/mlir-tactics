@@ -13,7 +13,7 @@ func @scop_entry(%arg0: memref<2000x2000xf32>,
     %cst = constant 0.000000e+00 : f32
     affine.store %cst, %arg4[%arg7] : memref<2000xf32>
   }
-  // y[i] = B[i][j] * x[j] + y[i]
+  // tmp[i] = A[i][j] * x[j] + tmp[i]
   affine.for %arg7 = 0 to 2000 {
     affine.for %arg8 = 0 to 2000 {
       %0 = affine.load %arg0[%arg7, %arg8] : memref<2000x2000xf32>
@@ -23,8 +23,8 @@ func @scop_entry(%arg0: memref<2000x2000xf32>,
       %4 = addf %3, %2 : f32
       affine.store %4, %arg4[%arg7] : memref<2000xf32>
     }
-  }
-  // tmp[i] = A[i][j] * x[j] + tmp[i]
+  } 
+  // y[i] = B[i][j] * x[j] + y[i]
   affine.for %arg7 = 0 to 2000 {
     affine.for %arg8 = 0 to 2000 {
       %0 = affine.load %arg1[%arg7, %arg8] : memref<2000x2000xf32>
@@ -67,12 +67,12 @@ func @main() {
   call @scop_entry(%A, %B, %cf1, %cf2, %tmp, %x, %y) :
     (memref<2000x2000xf32>, memref<2000x2000xf32>, f32, f32, memref<2000xf32>, memref<2000xf32>,
      memref<2000xf32>) -> ()
+  //%ptmp = memref_cast %tmp : memref<2000xf32> to memref<*xf32>
+  //call @print_memref_f32(%ptmp) : (memref<*xf32>) -> ()
   call @stop_timer() : () -> ()
   return
 }
 
 func @start_timer()
 func @stop_timer()
-
-  
-  
+func @print_memref_f32(memref<*xf32>)  

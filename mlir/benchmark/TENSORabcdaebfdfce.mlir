@@ -37,7 +37,7 @@ func @main() {
     (memref<32x32x32x32xf32>, memref<32x32x32x32xf32>, memref<32x32x32x32xf32>) -> ()
   call @stop_timer() : () -> ()
   %pC = memref_cast %C : memref<32x32x32x32xf32> to memref<*xf32>
-  // call @print_memref_f32(%pC) : (memref<*xf32>) -> ()
+  //call @print_memref_f32(%pC) : (memref<*xf32>) -> ()
   return 
 }
 

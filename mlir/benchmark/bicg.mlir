@@ -54,14 +54,18 @@ func @main() {
   linalg.fill(%y1, %cf1) : memref<2000xf32>, f32
   linalg.fill(%y2, %cf2) : memref<2000xf32>, f32
   linalg.fill(%x2, %cf2) : memref<2000xf32>, f32
+  linalg.fill(%A, %cf1) : memref<2000x2000xf32>, f32
   
   call @start_timer() : () -> ()
-  call @scop_entry(%A, %x1, %x1, %y1, %y2) : 
+  call @scop_entry(%A, %x2, %y2, %x1, %y1) : 
     (memref<2000x2000xf32>, memref<2000xf32>, memref<2000xf32>,
      memref<2000xf32>, memref<2000xf32>) -> ()
+  %py2 = memref_cast %y2 : memref<2000xf32> to memref<*xf32>
+  //call @print_memref_f32(%py2) : (memref<*xf32>) -> ()
   call @stop_timer() : () -> ()
   return
 }
 
 func @start_timer()
 func @stop_timer() 
+func @print_memref_f32(memref<*xf32>)
