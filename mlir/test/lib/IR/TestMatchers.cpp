@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Access.h"
 #include "mlir/IR/Function.h"
@@ -159,7 +159,7 @@ void getNestedLoops(std::vector<SmallVector<AffineForOp, 4>> &bands, FuncOp f) {
   getNestedLoopsImpl(bands, f);
 }
 
-void getNestedLoops(std::vector<SmallVector<loop::ForOp, 4>> &bands, FuncOp f) {
+void getNestedLoops(std::vector<SmallVector<scf::ForOp, 4>> &bands, FuncOp f) {
   getNestedLoopsImpl(bands, f);
 }
 
@@ -243,7 +243,7 @@ void test4(FuncOp f) {
 void test5(FuncOp f) {
   if (f.getNumArguments() != 3)
     llvm_unreachable("matcher test func must have 3 args");
-  std::vector<SmallVector<loop::ForOp, 4>> bands;
+  std::vector<SmallVector<scf::ForOp, 4>> bands;
   getNestedLoops(bands, f);
   if (bands.size() != 1)
     llvm_unreachable("expect single loop nest");
