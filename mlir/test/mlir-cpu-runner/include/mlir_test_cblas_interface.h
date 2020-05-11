@@ -179,6 +179,10 @@ _mlir_ciface_reshape_2x3x4_to_2x12(StridedMemRefType<float, 3> *S,
                                    StridedMemRefType<float, 2> *D);
 
 extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_reshape_32x32x32x32_to_1024x1024(StridedMemRefType<float, 4> *S,
+                                              StridedMemRefType<float, 2> *D);
+
+extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_linalg_fill_view2x3xf32_f32(StridedMemRefType<float, 2> *X,
                                          float f);
 
