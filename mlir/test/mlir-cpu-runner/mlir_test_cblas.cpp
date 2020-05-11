@@ -12,7 +12,7 @@
 
 #include "include/mlir_test_cblas.h"
 #include <assert.h>
-
+/*
 extern "C" float mlir_test_cblas_sdot(const int N, const float *X,
                                       const int incX, const float *Y,
                                       const int incY) {
@@ -44,3 +44,4 @@ extern "C" void mlir_test_cblas_sgemm(
     }
   }
 }
+*/
