@@ -18,9 +18,13 @@
 #include <string.h>
 #include <vector>
 
-#ifdef HAS_CPU_SUPPORT
+#ifdef HAS_CPU_SUPPORT_DNNL
 #include "dnnl.hpp"
 using namespace dnnl;
+#endif
+
+#ifdef HAS_CPU_SUPPORT_MKL
+#include "mkl.h"
 #endif
 
 #ifdef HAS_GPU_SUPPORT
@@ -44,7 +48,7 @@ _mlir_ciface_linalg_fill_viewsxf32_f32(StridedMemRefType<float, 1> *X,
                                        float f) {
   for (unsigned i = 0; i < X->sizes[0]; ++i) {
     *(X->data + X->offset + i * X->strides[0]) = f;
-    f++;
+    // f++;
   }
 }
 
@@ -54,7 +58,7 @@ _mlir_ciface_linalg_fill_viewsxsxf32_f32(StridedMemRefType<float, 2> *X,
   for (unsigned i = 0; i < X->sizes[0]; ++i)
     for (unsigned j = 0; j < X->sizes[1]; ++j) {
       *(X->data + X->offset + i * X->strides[0] + j * X->strides[1]) = f;
-      f++;
+      // f++;
     }
 }
 
@@ -66,7 +70,7 @@ _mlir_ciface_linalg_fill_viewsxsxsxf32_f32_f32(StridedMemRefType<float, 3> *X,
       for (unsigned k = 0; k < X->sizes[2]; ++k) {
         *(X->data + X->offset + i * X->strides[0] + j * X->strides[1] +
           k * X->strides[2]) = f;
-        f++;
+        // f++;
       }
 }
 
@@ -78,7 +82,7 @@ extern "C" void _mlir_ciface_linalg_fill_viewsxsxsxsxf32_f32_f32_f32(
         for (unsigned l = 0; l < X->sizes[3]; l++) {
           *(X->data + X->offset + i * X->strides[0] + j * X->strides[1] +
             k * X->strides[2] + l * X->strides[3]) = f;
-          f++;
+          // f++;
         }
 }
 
@@ -117,7 +121,7 @@ extern "C" void _mlir_ciface_linalg_copy_viewsxsxf32_viewsxsxf32(
       O->data[O->offset + i * so0 + j * so1] =
           I->data[I->offset + i * si0 + j * si1];
 }
-
+/*
 extern "C" void _mlir_ciface_linalg_dot_viewsxf32_viewsxf32_viewf32(
     StridedMemRefType<float, 1> *X, StridedMemRefType<float, 1> *Y,
     StridedMemRefType<float, 0> *Z) {
@@ -153,7 +157,7 @@ extern "C" void _mlir_ciface_linalg_matmul_viewsxsxf32_viewsxsxf32_viewsxsxf32(
       1.0f, A->data + A->offset, A->strides[0], B->data + B->offset,
       B->strides[0], 1.0f, C->data + C->offset, C->strides[0]);
 }
-
+*/
 void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
                 StridedMemRefType<float, 2> *A, StridedMemRefType<float, 2> *B,
                 int alpha, int beta) {
@@ -183,7 +187,7 @@ void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
 
   char isTransA = (transA) ? 'T' : 'N';
   char isTransB = (transB) ? 'T' : 'N';
-#ifdef HAS_CPU_SUPPORT
+#ifdef HAS_CPU_SUPPORT_DNNL
   auto res = dnnl_sgemm(isTransA, isTransB, M, N, K, (float)alpha,
                         A->data + A->offset, lda, B->data + B->offset, ldb,
                         (float)beta, C->data + C->offset, ldc);
@@ -194,6 +198,35 @@ void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
 #endif
 
   assert(0 && "naive gemm not implemented yet");
+}
+
+void matvecBlas(int transA, StridedMemRefType<float, 1> *y,
+                StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
+                float alpha, float beta) {
+  size_t M = A->sizes[0];
+  size_t N = A->sizes[1];
+  size_t lda = N;
+  size_t incx = x->strides[0];
+  size_t incy = y->strides[0];
+  auto isTransA = (transA) ? CblasTrans : CblasNoTrans;
+
+  // std::cout << "\nx -> \n";
+  // printMemRefMetaData(std::cerr, *x);
+  // std::cout << "\ny -> \n";
+  // printMemRefMetaData(std::cerr, *y);
+  // std::cout << "\nalpha : " << alpha << "\n";
+  // std::cout << "\nbeta : " << beta << "\n";
+  // std::cout << "\nincx : " << incx << "\n";
+  // std::cout << "\nincy : " << incy << "\n";
+  // std::cout << "isTransA : " << transA << "\n";
+
+#ifdef HAS_CPU_SUPPORT_MKL
+  cblas_sgemv(CblasRowMajor, isTransA, M, N, alpha, A->data + A->offset, lda,
+              x->data + x->offset, incx, beta, y->data + y->offset, incy);
+  return;
+#endif
+
+  assert(0 && "naive gemv not implemented yet");
 }
 
 extern "C" void _mlir_ciface_matmul_42x42x42(int transA, int transB,
@@ -255,7 +288,7 @@ extern "C" void _mlir_ciface_matmul_800x1200x900(
 extern "C" void _mlir_ciface_matvec_2000x2000x2000(
     StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
     StridedMemRefType<float, 1> *y, float alpha, float beta, int transA) {
-  // TODO: fill me.
+  matvecBlas(transA, x, y, A, alpha, beta);
 }
 
 extern "C" void _mlir_ciface_matmul_2x12x5(int transA, int transB,
@@ -304,7 +337,7 @@ _mlir_ciface_linalg_fill_view1200x1000xf32_f32(StridedMemRefType<float, 2> *X,
   _mlir_ciface_linalg_fill_viewsxsxf32_f32(X, f);
 }
 
-#ifdef HAS_CPU_SUPPORT
+#ifdef HAS_CPU_SUPPORT_DNNL
 template <int D>
 inline memory::dims shapeToMklDnnDims(const StridedMemRefType<float, D> *T) {
   memory::dims dims(D);
@@ -373,7 +406,7 @@ void transposeBlas(StridedMemRefType<float, T> *S,
     // for (const auto elem : arrayPerm)
     //  std::cout << elem << "\n";
 
-#ifdef HAS_CPU_SUPPORT
+#ifdef HAS_CPU_SUPPORT_DNNL
   auto cpu_engine = engine(engine::kind::cpu, 0);
   memory::dims in_dims = shapeToMklDnnDims(S);
   memory::dims out_dims = shapeToMklDnnDims(D);
@@ -678,6 +711,12 @@ _mlir_ciface_linalg_fill_view2000x2000xf32_f32(StridedMemRefType<float, 2> *X,
 
 extern "C" void
 _mlir_ciface_linalg_fill_view2000xf32_f32(StridedMemRefType<float, 1> *X,
+                                          float f) {
+  _mlir_ciface_linalg_fill_viewsxf32_f32(X, f);
+}
+
+extern "C" void
+_mlir_ciface_linalg_fill_view4000xf32_f32(StridedMemRefType<float, 1> *X,
                                           float f) {
   _mlir_ciface_linalg_fill_viewsxf32_f32(X, f);
 }

@@ -354,6 +354,10 @@ extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_linalg_fill_view2000xf32_f32(StridedMemRefType<float, 1> *X,
                                           float f);
 
+extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_linalg_fill_view4000xf32_f32(StridedMemRefType<float, 1> *X,
+                                          float f);
+
 extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void _mlir_ciface_matmul_32x32x64(
     int transA, int transB, StridedMemRefType<float, 2> *C,
     StridedMemRefType<float, 2> *A, StridedMemRefType<float, 2> *B,
