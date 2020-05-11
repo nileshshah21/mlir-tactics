@@ -8,7 +8,7 @@
 
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
-#include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -103,7 +103,7 @@ void NestedPattern::matchOne(Operation *op,
 }
 
 static bool isForOp(Operation &op) {
-  return ((isa<AffineForOp>(op)) || (isa<loop::ForOp>(op)));
+  return ((isa<AffineForOp>(op)) || (isa<scf::ForOp>(op)));
 }
 
 static bool isAffineIfOp(Operation &op) { return isa<AffineIfOp>(op); }
