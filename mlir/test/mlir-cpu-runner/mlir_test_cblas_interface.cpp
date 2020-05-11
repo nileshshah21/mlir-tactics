@@ -415,6 +415,13 @@ _mlir_ciface_reshape_5x3x4_to_5x12(StridedMemRefType<float, 3> *S,
 }
 
 extern "C" void
+_mlir_ciface_reshape_32x32x32x32_to_1024x1024(StridedMemRefType<float, 4> *S,
+                                              StridedMemRefType<float, 2> *D) {
+  memcpy(D->data + D->offset, S->data + S->offset,
+         S->sizes[0] * S->sizes[1] * S->sizes[2] * S->sizes[3] * sizeof(float));
+}
+
+extern "C" void
 _mlir_ciface_reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
                                    StridedMemRefType<float, 3> *D) {
   memcpy(D->data + D->offset, S->data + S->offset,
