@@ -169,23 +169,14 @@ void BuilderEmitter::emitMatmulLinalg(MatmulTy &mmi) {
   auto C = mmi.output;
   auto A = mmi.inputs[0];
   auto B = mmi.inputs[1];
-
-  // if alpha or beta are not '1' we cannot
-  // emit linalg, as at the moment constants
-  // are not supported.
   auto alpha = mmi.alpha;
   auto beta = mmi.beta;
-  if (!isConstantOne(alpha) || !isConstantOne(beta)) {
-    os << "assert(0 && \"alpha and beta not supported for Linalg\");\n";
-    return;
-  }
 
   os << formatv(
       R"(
-    mlir::edsc::ScopedContext scop(rewriter, op.getLoc());
-    mlir::edsc::ops::linalg_generic_matmul({0}, {1}, {2});
+    createLinalgMatmulOp(rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4});
     )",
-      C, A, B);
+      beta, alpha, C, A, B);
 }
 
 void BuilderEmitter::emitMatmulBlas(MatmulTy &mmi, Target t) {
