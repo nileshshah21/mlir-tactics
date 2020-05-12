@@ -1,7 +1,7 @@
 // RUN: mlir-opt -mlir-disable-threading -test-tactics-linalg --debug %s | FileCheck %s
 
 func @gemmT(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>) {
-  // CHECK: linalg.generic
+  // CHECK: linalg.matmul
   affine.for %i = 0 to 42 {
     affine.for %j = 0 to 42 {
       affine.for %k = 0 to 42 {
@@ -18,7 +18,7 @@ func @gemmT(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>)
 }
 
 func @gemm(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>) {
-  // CHECK: linalg.generic
+  // CHECK: linalg.matmul
   affine.for %i = 0 to 42 {
     affine.for %j = 0 to 42 {
       affine.for %k = 0 to 42 {
@@ -38,7 +38,7 @@ func @contraction.ab.acd.dbc(%C: memref<1024x1024xf32>, %A: memref<1024x32x32xf3
   // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d2, d0, d1) : memref<32x1024x32xf32>
   // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<1024x32x32xf32> into memref<1024x1024xf32>
   // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32, #{{.*}}> into memref<1024x1024xf32, #{{.*}}>
-  // CHECK: linalg.generic
+  // CHECK: linalg.matmul
   affine.for %a = 0 to 1024 {
     affine.for %b = 0 to 1024 {
       affine.for %c = 0 to 32 {
@@ -60,7 +60,7 @@ func @contraction.abc.acd.db(%C: memref<32x1024x32xf32>, %A: memref<32x32x1024xf
   // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d0, d2, d1) : memref<32x1024x32xf32>
   // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32, #{{.*}}> into memref<?x1024xf32, #{{.*}}>
   // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32> into memref<1024x1024xf32>
-  // CHECK: linalg.generic
+  // CHECK: linalg.matmul
   // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<?x1024xf32, #{{.*}}> into memref<32x32x1024xf32, #{{.*}}>
   // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d0, d2, d1) : memref<32x32x1024xf32, #{{.*}}>
   affine.for %a = 0 to 32 {

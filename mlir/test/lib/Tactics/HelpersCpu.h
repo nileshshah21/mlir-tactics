@@ -312,20 +312,6 @@ std::string getPermutationArrayName(llvm::ArrayRef<int> perm) {
   return res;
 }
 
-mlir::Value createConstantFloatOp(int constant, mlir::Type t,
-                                  mlir::PatternRewriter &rewriter,
-                                  mlir::Location &loc) {
-  return rewriter.create<mlir::ConstantOp>(loc, t,
-                                           rewriter.getFloatAttr(t, constant));
-}
-
-// TODO: check how we can remove this function.
-mlir::Value createConstantFloatOp(mlir::Value constant, mlir::Type t,
-                                  mlir::PatternRewriter &rewriter,
-                                  mlir::Location &loc) {
-  return constant;
-}
-
 // create a function call to mkl sgemm. Declare the function if not already
 // in the module.
 // The generated function has the following args:

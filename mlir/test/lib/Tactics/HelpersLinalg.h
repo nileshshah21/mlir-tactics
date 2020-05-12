@@ -9,6 +9,42 @@
 
 namespace {
 
+template <typename TypeAlpha, typename TypeBeta>
+void createLinalgMatmulOp(mlir::OpBuilder &builder, mlir::Location loc,
+                          TypeBeta beta, TypeAlpha alpha, mlir::Value C,
+                          mlir::Value A, mlir::Value B) {
+  static_assert(((std::is_same<TypeBeta, mlir::Value>::value) ||
+                 (std::is_same<TypeBeta, int>::value)),
+                "expect mlir::Value or int");
+  static_assert(((std::is_same<TypeAlpha, mlir::Value>::value) ||
+                 (std::is_same<TypeAlpha, int>::value)),
+                "expect mlir::Value or int");
+  auto memref = C.getType().dyn_cast<mlir::MemRefType>();
+  auto type = memref.getElementType();
+  // MatmulOp expect only memref types. Constants
+  // are modelled as memref type of rank 0. Thus
+  // before emitting a matmulOp we do:
+  // 1. create a mamref of rank 0
+  // 2. fill the created memref with the value of the constant
+  // 3. emit matmulOp
+  // create constants.
+  auto constantAlpha = createConstantFloatOp(alpha, type, builder, loc);
+  auto constantBeta = createConstantFloatOp(beta, type, builder, loc);
+  // create rank zero memref.
+  auto memrefType = mlir::MemRefType::get({}, type, {}, 0);
+  auto rankZeroMemrefAlpha = builder.create<mlir::AllocOp>(loc, memrefType);
+  auto rankZeroMemrefBeta = builder.create<mlir::AllocOp>(loc, memrefType);
+  auto betaV =
+      builder
+          .create<mlir::linalg::FillOp>(loc, rankZeroMemrefBeta, constantBeta)
+          .getOutputBuffer(0);
+  auto alphaV =
+      builder
+          .create<mlir::linalg::FillOp>(loc, rankZeroMemrefAlpha, constantAlpha)
+          .getOutputBuffer(0);
+  builder.create<mlir::linalg::MatmulOp>(loc, betaV, alphaV, C, A, B);
+}
+
 mlir::Value
 createLinalgReshapeOp(mlir::OpBuilder &builder, mlir::Location loc,
                       mlir::Value input,
