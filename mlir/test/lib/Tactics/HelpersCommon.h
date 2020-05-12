@@ -21,6 +21,20 @@
 
 namespace {
 
+mlir::Value createConstantFloatOp(int constant, mlir::Type t,
+                                  mlir::OpBuilder &rewriter,
+                                  mlir::Location &loc) {
+  return rewriter.create<mlir::ConstantOp>(loc, t,
+                                           rewriter.getFloatAttr(t, constant));
+}
+
+// TODO: check how we can remove this function.
+mlir::Value createConstantFloatOp(mlir::Value constant, mlir::Type t,
+                                  mlir::OpBuilder &rewriter,
+                                  mlir::Location &loc) {
+  return constant;
+}
+
 // get the LLVM dialect.
 mlir::LLVM::LLVMDialect *getLLVMDialect(mlir::ModuleOp module) {
   auto *context = module.getContext();
