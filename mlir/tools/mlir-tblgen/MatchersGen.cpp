@@ -29,7 +29,7 @@ template <> struct format_provider<identifierLine> {
 };
 } // end namespace llvm
 
-thread_local SymbolTableMap BuilderEmitter::symbolTable_;
+thread_local SymbolTableMap<std::string> BuilderEmitter::symbolTable_;
 
 BuilderEmitter::BuilderEmitter(Record *record, bool lastBeforeEraseOp,
                                raw_ostream &os)
@@ -512,7 +512,7 @@ void BuilderEmitter::emit() {
     emitErase();
 }
 
-void SymbolTableMap::dump() const {
+template <> void SymbolTableMap<std::string>::dump() const {
   for (const auto &elem : symbolTable_) {
     LLVM_DEBUG(dbgs() << "elem.first  : " << elem.first << "\n");
     LLVM_DEBUG(dbgs() << "elem.second : " << elem.second << "\n");
@@ -520,37 +520,17 @@ void SymbolTableMap::dump() const {
   }
 }
 
-void SymbolTableMap::clear() { symbolTable_.clear(); }
-
-void SymbolTableMap::updateOrInsert(std::string key, std::string value) {
-  auto it = symbolTable_.find(key);
-  if (it == symbolTable_.end())
-    insert(key, value);
-  else
-    it->second = value;
-}
-
-std::string SymbolTableMap::getNextVariable() {
-  std::string var = "var" + std::to_string(nextId_++);
-  return var;
-}
-
-void SymbolTableMap::insert(std::string key, std::string value) {
-  symbolTable_.insert(std::make_pair(key, value));
-}
-
-bool SymbolTableMap::lookup(std::string key, std::string &value) const {
-  auto it = symbolTable_.find(key);
-  if (it != symbolTable_.end()) {
-    value = it->second;
-    return true;
+template <> void SymbolTableMap<Tensor>::dump() const {
+  for (const auto &elem : symbolTable_) {
+    LLVM_DEBUG(dbgs() << "tensor.id : " << elem.first.getId() << " ");
+    LLVM_DEBUG(dbgs() << "[ ");
+    auto indexes = elem.first.getIndexes();
+    for (const auto &index : indexes)
+      LLVM_DEBUG(dbgs() << index.getId() << " ");
+    LLVM_DEBUG(dbgs() << "]\n");
+    LLVM_DEBUG(dbgs() << elem.second << "\n");
+    LLVM_DEBUG(dbgs() << "-----\n");
   }
-  return false;
-}
-
-bool SymbolTableMap::lookup(std::string key) const {
-  std::string dummyCapture;
-  return lookup(key, dummyCapture);
 }
 
 // Walk tree (see teckly).
@@ -630,9 +610,9 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t) {
     return emitConstantOperationMatcher(Const(t));
   case TK_APPLY: {
     auto tc = Apply(t);
-    auto tcName = Ident(tc.name());
     std::string lookupName;
-    if (!symbolTable_.lookup(tcName.name(), lookupName))
+    if (!symbolTable_.lookup(Tensor::buildTensor(tc.name(), tc.arguments()),
+                             lookupName))
       llvm_unreachable("cannot find symbol");
     os << lookupName;
     return;
@@ -655,7 +635,9 @@ void TacticsEmitter::emitArithOperationMatcher(
   case TK_PLUS_EQ: {
     os << "m_Op<mlir::AddFOp>(";
     std::string lookupName;
-    if (!symbolTable_.lookup(comprehension.ident().name(), lookupName))
+    if (!symbolTable_.lookup(
+            Tensor::buildTensor(comprehension.ident(), comprehension.indices()),
+            lookupName))
       llvm_unreachable("cannot find symbol");
     os << lookupName << ", ";
     emitArithOperationMatcher(comprehension.rhs());
@@ -857,7 +839,7 @@ void TacticsEmitter::emitRewriteLogic() {
 TacticsEmitter::TacticsEmitter(Record *record, raw_ostream &os)
     : record_(record), loc_(record_->getLoc()),
       parser_(Parser(record_->getValueAsString("pattern").str())), os(os),
-      symbolTable_(SymbolTableMap()){};
+      symbolTable_(SymbolTableMap<Tensor>()){};
 
 std::vector<std::pair<StringRef, unsigned>>
 TacticsEmitter::getLocation() const {

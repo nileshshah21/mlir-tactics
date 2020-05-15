@@ -77,21 +77,107 @@ private:
 
 enum class Target { CPU, GPU };
 
-class SymbolTableMap {
+// TODO: Handle coeff. and increment.
+class Index {
+public:
+  Index() = delete;
+  Index(std::string id) : id_(id){};
+  std::string getId() const { return id_; };
+
+private:
+  std::string id_;
+};
+
+class Tensor {
+public:
+  Tensor() = delete;
+  Tensor(std::string id, std::vector<Index> indexes)
+      : id_(id), indexes_(indexes){};
+  std::string getId() const { return id_; };
+  std::vector<Index> getIndexes() const { return indexes_; };
+  friend bool operator<(const Tensor &t1, const Tensor &t2);
+  template <typename T>
+  static Tensor buildTensor(const lang::Ident &ident,
+                            const lang::ListView<T> &indices);
+
+private:
+  std::string id_;
+  std::vector<Index> indexes_;
+};
+
+// sorting operator for Tensor class used by std::map.
+bool operator<(const Tensor &t1, const Tensor &t2) {
+  auto t1S = t1.getId();
+  auto t2S = t2.getId();
+  auto t1Indexes = t1.getIndexes();
+  auto t2Indexes = t2.getIndexes();
+  for (const auto &index : t1Indexes)
+    t1S += index.getId();
+  for (const auto &index : t2Indexes)
+    t2S += index.getId();
+  return t1S < t2S;
+}
+
+template <typename T>
+Tensor Tensor::buildTensor(const lang::Ident &ident,
+                           const lang::ListView<T> &indices) {
+  auto tensorId = ident.name();
+  std::vector<Index> tensorIndexes{};
+  for (const auto &index : indices)
+    tensorIndexes.push_back(Index(lang::Ident(index).name()));
+  return Tensor(tensorId, tensorIndexes);
+}
+
+template <typename T> class SymbolTableMap {
 public:
   SymbolTableMap() : nextId_(0){};
   std::string getNextVariable();
-  void insert(std::string key, std::string value);
-  void updateOrInsert(std::string key, std::string value);
-  bool lookup(std::string key, std::string &value) const;
-  bool lookup(std::string key) const;
+  void insert(T key, std::string value);
+  void updateOrInsert(T key, std::string value);
+  bool lookup(T, std::string &value) const;
+  bool lookup(T key) const;
   void clear();
   void dump() const;
 
 private:
   size_t nextId_;
-  std::map<std::string, std::string> symbolTable_;
+  std::map<T, std::string> symbolTable_;
 };
+
+template <typename T> void SymbolTableMap<T>::insert(T key, std::string value) {
+  symbolTable_.insert(std::make_pair(key, value));
+}
+
+template <typename T>
+bool SymbolTableMap<T>::lookup(T key, std::string &value) const {
+  auto it = symbolTable_.find(key);
+  if (it != symbolTable_.end()) {
+    value = it->second;
+    return true;
+  }
+  return false;
+}
+
+template <typename T> bool SymbolTableMap<T>::lookup(T key) const {
+  std::string dummyCapture;
+  return lookup(key, dummyCapture);
+}
+
+template <typename T>
+void SymbolTableMap<T>::updateOrInsert(T key, std::string value) {
+  auto it = symbolTable_.find(key);
+  if (it == symbolTable_.end())
+    insert(key, value);
+  else
+    it->second = value;
+}
+
+template <typename T> void SymbolTableMap<T>::clear() { symbolTable_.clear(); }
+
+template <typename T> std::string SymbolTableMap<T>::getNextVariable() {
+  std::string var = "var" + std::to_string(nextId_++);
+  return var;
+}
 
 struct MatvecTy {
   std::string output;
@@ -166,7 +252,7 @@ private:
 
 public:
   // FIXME make friend with TacticsEmitter instead of public.
-  static thread_local SymbolTableMap symbolTable_;
+  static thread_local SymbolTableMap<std::string> symbolTable_;
 };
 
 class TacticsEmitter {
@@ -187,7 +273,7 @@ private:
   llvm::raw_ostream &os;
 
   // symbol table map.
-  SymbolTableMap symbolTable_;
+  SymbolTableMap<Tensor> symbolTable_;
 
   // get Location
   using identifierLine = std::pair<llvm::StringRef, unsigned>;
@@ -239,7 +325,7 @@ void TacticsEmitter::emitLoadOrStoreMatcherOp(const lang::Ident &ident,
                                               StringRef operation) {
   auto var = symbolTable_.getNextVariable();
   if (operation.equals("mlir::AffineLoadOp"))
-    symbolTable_.insert(ident.name(), var); // A -> var0
+    symbolTable_.insert(Tensor::buildTensor(ident, indices), var); // A -> var0
   os.indent(8) << "auto ";
   os << var << " = m_Op<" << operation << ">(";
   os << "_" << ident.name() << "({";
