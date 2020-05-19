@@ -57,8 +57,8 @@ template <typename TypeAlpha, typename TypeBeta>
 void createLinalgMatmulOp(mlir::OpBuilder &builder, mlir::Location loc,
                           TypeBeta beta, TypeAlpha alpha, mlir::Value C,
                           mlir::Value A, mlir::Value B) {
-  return createLinalgOp<mlir::linalg::MatmulOp>(builder, loc, beta, alpha, C, A,
-                                                B);
+  return createLinalgOp<mlir::linalg::MatmulOp>(builder, loc, beta, alpha, A, B,
+                                                C);
 }
 
 mlir::Value
