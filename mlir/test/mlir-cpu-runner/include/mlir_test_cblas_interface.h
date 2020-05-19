@@ -9,6 +9,7 @@
 #define MLIR_CPU_RUNNER_MLIR_TEST_CBLAS_INTERFACE_H_
 
 #include "mlir/ExecutionEngine/RunnerUtils.h"
+#include <chrono>
 
 #ifdef _WIN32
 #ifndef MLIR_TEST_CBLAS_INTERFACE_EXPORT
