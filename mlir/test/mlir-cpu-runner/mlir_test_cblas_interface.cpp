@@ -13,7 +13,6 @@
 #include "include/mlir_test_cblas_interface.h"
 #include "include/mlir_test_cblas.h"
 #include <assert.h>
-#include <chrono>
 #include <iostream>
 #include <string.h>
 #include <vector>
@@ -203,6 +202,7 @@ void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
 void matvecBlas(int transA, StridedMemRefType<float, 1> *y,
                 StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
                 float alpha, float beta) {
+  #ifdef HAS_CPU_SUPPORT_MKL
   size_t M = A->sizes[0];
   size_t N = A->sizes[1];
   size_t lda = N;
@@ -220,7 +220,7 @@ void matvecBlas(int transA, StridedMemRefType<float, 1> *y,
   // std::cout << "\nincy : " << incy << "\n";
   // std::cout << "isTransA : " << transA << "\n";
 
-#ifdef HAS_CPU_SUPPORT_MKL
+
   cblas_sgemv(CblasRowMajor, isTransA, M, N, alpha, A->data + A->offset, lda,
               x->data + x->offset, incx, beta, y->data + y->offset, incy);
   return;
