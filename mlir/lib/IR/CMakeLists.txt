@@ -1,4 +1,5 @@
 add_mlir_library(MLIRIR
+  Access.cpp
   AffineExpr.cpp
   AffineMap.cpp
   AsmPrinter.cpp
