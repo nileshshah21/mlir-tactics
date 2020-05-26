@@ -50,6 +50,7 @@ static LogicalResult verifyNamedStructuredOp(NamedStructuredOpType op);
 /// ```
 /// It folds the source of the memref_cast into the root operation directly.
 static LogicalResult foldMemRefCast(Operation *op) {
+  return success();
   bool folded = false;
   for (OpOperand &operand : op->getOpOperands()) {
     auto castOp = operand.get().getDefiningOp<MemRefCastOp>();
