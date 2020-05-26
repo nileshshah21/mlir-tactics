@@ -345,24 +345,51 @@ void BuilderEmitter::emitTransposeLinalg(std::string destBuff,
   os << formatv(
       R"(
     auto permutationMap = mlir::AffineMap::getPermutationMap(
-      llvm::ArrayRef<unsigned>({0}), rewriter.getContext());
+      llvm::ArrayRef<unsigned>({1}), rewriter.getContext());
+    
+    // Emit a linalg transpose as:
+    // %0 = memref_cast %arg0 : memref<32x1024x32xf32> to memref<?x?x?xf32>
+    // %1 = linalg.transpose %0 (d0, d1, d2) -> (d2, d0, d1) : memref<?x?x?xf32>
+    // %2 = memref_cast %1 : memref<?x?x?xf32> to memref<32x32x1024xf32>
+
+    auto inputMemRef = {0}.getType().dyn_cast_or_null<mlir::MemRefType>();
+    llvm::SmallVector<int64_t, 8> newSizes;
+    size_t numDimInput = inputMemRef.getShape().size();
+    newSizes.reserve(numDimInput);
+    for (size_t i = 0; i < numDimInput; i++)
+      newSizes.push_back(-1);
+    mlir::MemRefType newMemRefType =
+      mlir::MemRefType::Builder(inputMemRef).setShape(newSizes).setAffineMaps({{});
+    
+    mlir::Value casted = 
+      rewriter.create<mlir::MemRefCastOp>(op.getLoc(), newMemRefType, {0});
+
+    mlir::Value transposed = rewriter.create<mlir::linalg::TransposeOp>(
+      op.getLoc(), casted, mlir::AffineMapAttr::get(permutationMap));
+    
+    newSizes = applyPermutation(inputMemRef.getShape(), {1}); 
+    // XXX
+    transposed.setType(newMemRefType);
+    //auto transposedType = transposed.getType().dyn_cast_or_null<mlir::MemRefType>();
+    newMemRefType = mlir::MemRefType::Builder(inputMemRef)
+      .setShape(newSizes)/*.setAffineMaps(transposedType.getAffineMaps())*/;
     )",
-      permutation);
+      input, permutation);
+
   if (lastBeforeEraseOp_) {
     os << formatv(
         R"(
-    mlir::Value t = rewriter.create<mlir::linalg::TransposeOp>(
-      op.getLoc(), {0}, mlir::AffineMapAttr::get(permutationMap));
-    rewriter.create<mlir::linalg::CopyOp>(op.getLoc(), t, {1});
+    mlir::Value castedBack = 
+      rewriter.create<mlir::MemRefCastOp>(op.getLoc(), newMemRefType, transposed);
+    rewriter.create<mlir::linalg::CopyOp>(op.getLoc(), castedBack, {0});
     )",
-        input, destBuff);
+        destBuff);
   } else {
     os << formatv(
-        R"(
-    {1} = rewriter.create<mlir::linalg::TransposeOp>(
-      op.getLoc(), {0}, mlir::AffineMapAttr::get(permutationMap));
+        R"( 
+    {0} = rewriter.create<mlir::MemRefCastOp>(op.getLoc(), newMemRefType, transposed);
     )",
-        input, destBuff);
+        destBuff);
   }
 }
 
