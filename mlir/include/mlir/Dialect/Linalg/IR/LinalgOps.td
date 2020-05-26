@@ -313,6 +313,9 @@ def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
       return emitOpError("expected a permutation map");
     if (permutation().getNumDims() != getShapedType().getRank())
       return emitOpError("expected a permutation map of same rank as the view");
+    auto sourceType = getShapedType();
+    if (sourceType.hasStaticShape())
+      return emitOpError("expect operand with a non-static shape");
     return success();
   }];
 
