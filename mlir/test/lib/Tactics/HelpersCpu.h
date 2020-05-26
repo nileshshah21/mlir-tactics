@@ -30,17 +30,6 @@ std::string composeFunctionNameForTranspose(llvm::ArrayRef<mlir::Type> types) {
   return result;
 }
 
-llvm::SmallVector<int64_t, 8>
-applyPermutation(llvm::ArrayRef<int64_t> shape,
-                 llvm::ArrayRef<int64_t> permutation) {
-  assert((shape.size() == permutation.size()) && "must be equal");
-  llvm::SmallVector<int64_t, 8> result{};
-  for (size_t i = 0; i < shape.size(); i++) {
-    result.push_back(shape[permutation[i]]);
-  }
-  return result;
-}
-
 mlir::MemRefType getTransposedMemref(mlir::MemRefType source,
                                      llvm::ArrayRef<int64_t> permutation) {
   auto sourceMemRefShape = source.getShape();

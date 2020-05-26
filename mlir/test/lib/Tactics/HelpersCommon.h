@@ -21,6 +21,17 @@
 
 namespace {
 
+llvm::SmallVector<int64_t, 8>
+applyPermutation(llvm::ArrayRef<int64_t> shape,
+                 llvm::ArrayRef<int64_t> permutation) {
+  assert((shape.size() == permutation.size()) && "must be equal");
+  llvm::SmallVector<int64_t, 8> result{};
+  for (size_t i = 0; i < shape.size(); i++) {
+    result.push_back(shape[permutation[i]]);
+  }
+  return result;
+}
+
 mlir::Value createConstantFloatOp(int constant, mlir::Type t,
                                   mlir::OpBuilder &rewriter,
                                   mlir::Location &loc) {
