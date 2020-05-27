@@ -85,9 +85,9 @@ func @matmulLoop(%A: memref<42x42xf32>, %B: memref<42x42xf32>, %C: memref<42x42x
   %c42 = constant 42 : index
   %c0 = constant 0 : index
   %c1 = constant 1 : index
-  loop.for %i = %c0 to %c42 step %c1 {
-    loop.for %j = %c0 to %c42 step %c1 {
-      loop.for %k = %c0 to %c42 step %c1 {
+  scf.for %i = %c0 to %c42 step %c1 {
+    scf.for %j = %c0 to %c42 step %c1 {
+      scf.for %k = %c0 to %c42 step %c1 {
         %0 = load %A[%i, %k] : memref<42x42xf32>
         %1 = load %B[%k, %j] : memref<42x42xf32>
         %2 = load %C[%i, %j] : memref<42x42xf32>
