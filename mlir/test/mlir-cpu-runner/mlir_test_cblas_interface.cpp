@@ -202,7 +202,7 @@ void matmulBlas(int transA, int transB, StridedMemRefType<float, 2> *C,
 void matvecBlas(int transA, StridedMemRefType<float, 1> *y,
                 StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
                 float alpha, float beta) {
-  #ifdef HAS_CPU_SUPPORT_MKL
+#ifdef HAS_CPU_SUPPORT_MKL
   size_t M = A->sizes[0];
   size_t N = A->sizes[1];
   size_t lda = N;
@@ -219,7 +219,6 @@ void matvecBlas(int transA, StridedMemRefType<float, 1> *y,
   // std::cout << "\nincx : " << incx << "\n";
   // std::cout << "\nincy : " << incy << "\n";
   // std::cout << "isTransA : " << transA << "\n";
-
 
   cblas_sgemv(CblasRowMajor, isTransA, M, N, alpha, A->data + A->offset, lda,
               x->data + x->offset, incx, beta, y->data + y->offset, incy);
@@ -285,7 +284,46 @@ extern "C" void _mlir_ciface_matmul_800x1200x900(
   matmulBlas(transA, transB, C, A, B, alpha, beta);
 }
 
+extern "C" void _mlir_ciface_matmul_1000x1100x1200(
+    int transA, int transB, StridedMemRefType<float, 2> *C,
+    StridedMemRefType<float, 2> *A, StridedMemRefType<float, 2> *B,
+    int64_t alpha, int64_t beta, int64_t dimForM, int64_t dimForN,
+    int64_t dimForK) {
+  // no need for dimForM, N and K as the memref is 2d.
+  matmulBlas(transA, transB, C, A, B, alpha, beta);
+}
+
 extern "C" void _mlir_ciface_matvec_2000x2000x2000(
+    StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
+    StridedMemRefType<float, 1> *y, float alpha, float beta, int transA) {
+  matvecBlas(transA, x, y, A, alpha, beta);
+}
+
+extern "C" void _mlir_ciface_matvec_2100x1900x1900(
+    StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
+    StridedMemRefType<float, 1> *y, float alpha, float beta, int transA) {
+  matvecBlas(transA, x, y, A, alpha, beta);
+}
+
+extern "C" void _mlir_ciface_matvec_2100x1900x2100(
+    StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
+    StridedMemRefType<float, 1> *y, float alpha, float beta, int transA) {
+  matvecBlas(transA, x, y, A, alpha, beta);
+}
+
+extern "C" void _mlir_ciface_matvec_1900x2100x1900(
+    StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
+    StridedMemRefType<float, 1> *y, float alpha, float beta, int transA) {
+  matvecBlas(transA, x, y, A, alpha, beta);
+}
+
+extern "C" void _mlir_ciface_matvec_1900x2100x2100(
+    StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
+    StridedMemRefType<float, 1> *y, float alpha, float beta, int transA) {
+  matvecBlas(transA, x, y, A, alpha, beta);
+}
+
+extern "C" void _mlir_ciface_matvec_1300x1300x1300(
     StridedMemRefType<float, 1> *x, StridedMemRefType<float, 2> *A,
     StridedMemRefType<float, 1> *y, float alpha, float beta, int transA) {
   matvecBlas(transA, x, y, A, alpha, beta);
