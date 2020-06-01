@@ -1,13 +1,13 @@
-func @contraction.ab.ac.cd(%A: memref<1024x1024xf32>, %B: memref<1024x1024xf32>, %C: memref<1024x1024xf32>) {
-  affine.for %i = 0 to 1024 {
-    affine.for %j = 0 to 1024 {
-      affine.for %k = 0 to 1024 {
-        %0 = affine.load %A[%i, %k] : memref<1024x1024xf32>
-        %1 = affine.load %B[%k, %j] : memref<1024x1024xf32>
-        %2 = affine.load %C[%i, %j] : memref<1024x1024xf32>
+func @contraction.ab.ac.cd(%A: memref<1000x1200xf32>, %B: memref<1200x1100xf32>, %C: memref<1000x1100xf32>) {
+  affine.for %i = 0 to 1000 {
+    affine.for %j = 0 to 1100 {
+      affine.for %k = 0 to 1200 {
+        %0 = affine.load %A[%i, %k] : memref<1000x1200xf32>
+        %1 = affine.load %B[%k, %j] : memref<1200x1100xf32>
+        %2 = affine.load %C[%i, %j] : memref<1000x1100xf32>
         %3 = mulf %0, %1 : f32
         %4 = addf %2, %3 : f32
-        affine.store %4, %C[%i, %j] : memref<1024x1024xf32>
+        affine.store %4, %C[%i, %j] : memref<1000x1100xf32>
       }
     }
   }
@@ -15,21 +15,21 @@ func @contraction.ab.ac.cd(%A: memref<1024x1024xf32>, %B: memref<1024x1024xf32>,
 }
 
 func @main() {
-  %A = alloc() : memref<1024x1024xf32>
-  %B = alloc() : memref<1024x1024xf32>
-  %C = alloc() : memref<1024x1024xf32>
+  %A = alloc() : memref<1000x1200xf32>
+  %B = alloc() : memref<1200x1100xf32>
+  %C = alloc() : memref<1000x1100xf32>
   
   %cf0 = constant 1.00000e+00 : f32
   %cf1 = constant 2.00000e+00 : f32
 
-  linalg.fill(%A, %cf1) : memref<1024x1024xf32>, f32
-  linalg.fill(%B, %cf1) : memref<1024x1024xf32>, f32
-  linalg.fill(%C, %cf0) : memref<1024x1024xf32>, f32
+  linalg.fill(%A, %cf1) : memref<1000x1200xf32>, f32
+  linalg.fill(%B, %cf1) : memref<1200x1100xf32>, f32
+  linalg.fill(%C, %cf0) : memref<1000x1100xf32>, f32
   call @start_timer() : () -> ()
   call @contraction.ab.ac.cd(%A, %B, %C) : 
-    (memref<1024x1024xf32>, memref<1024x1024xf32>, memref<1024x1024xf32>) -> ()
+    (memref<1000x1200xf32>, memref<1200x1100xf32>, memref<1000x1100xf32>) -> ()
   call @stop_timer() : () -> ()
-  %pC = memref_cast %C : memref<1024x1024xf32> to memref<*xf32>
+  %pC = memref_cast %C : memref<1000x1100xf32> to memref<*xf32>
   //call @print_memref_f32(%pC) : (memref<*xf32>) -> ()
   return 
 }
