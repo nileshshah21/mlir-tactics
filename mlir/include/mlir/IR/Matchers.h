@@ -155,6 +155,25 @@ typename std::enable_if_t<
                       Operation *>::value,
     bool>
 matchOperandOrValueAtIndex(Operation *op, unsigned idx, MatcherClass &matcher) {
+  // getDefiningOp doesn't work if we want to detect a chain of matmuls.
+  // Specifically, the output value of a `linalg.matmul` is *not* produced by
+  // another `linalg.matmul`, but it is the result of an `alloc` operation or a
+  // block argument. Thus we need to use `getUsers`. For now, we switch on the
+  // operation name and cover the case of the only `linalg.matmul`.
+  if (op->getName().getStringRef() == "linalg.matmul") {
+    // get output value for linalg.matmul.
+    auto users = op->getOperand(4).getUsers();
+    // we assume only two uses for the output value.
+    // 1. the current linalg.matmul
+    // 2. another linalg.matmul.
+    if (std::distance(users.begin(), users.end()) != 2)
+      return false;
+    for (const auto &user : users) {
+      if (user == op)
+        continue;
+      return matcher.match(user);
+    }
+  }
   if (auto defOp = op->getOperand(idx).getDefiningOp())
     return matcher.match(defOp);
   return false;
