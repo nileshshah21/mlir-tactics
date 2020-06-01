@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Access.h"
@@ -286,6 +287,23 @@ void test5(FuncOp f) {
   }
 }
 
+void test7(FuncOp f) {
+  using mlir::matchers::m_AnyCapture;
+
+  mlir::Value A1 = nullptr;
+  mlir::Value B1 = nullptr, B2 = nullptr, B3 = nullptr;
+
+  auto p1 = m_Op<linalg::MatmulOp>(
+      m_Any(), m_Any(), m_AnyCapture(A1), m_AnyCapture(B1),
+      m_Op<linalg::MatmulOp>(m_Any(), m_Any(), m_Any(), m_AnyCapture(B2),
+                             m_Op<linalg::MatmulOp>(m_Any(), m_Any(), m_Any(),
+                                                    m_AnyCapture(B3),
+                                                    m_Any())));
+
+  llvm::outs() << "Pattern linalg.matmul matched " << countMatches(f, p1)
+               << " times\n";
+}
+
 void test6(FuncOp f) {
   assert(f.getNumArguments() == 4 && "matcher test func must have 2 args");
   using namespace mlir::matchers;
@@ -331,6 +349,8 @@ void TestMatchers::runOnFunction() {
     test5(f);
   if (f.getName() == "binaryMatchers")
     test6(f);
+  if (f.getName() == "chainMatmul")
+    test7(f);
 }
 
 namespace mlir {
