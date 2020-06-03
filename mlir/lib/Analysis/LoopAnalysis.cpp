@@ -184,6 +184,40 @@ static bool isAccessIndexInvariant(Value iv, Value index) {
   return !composeOp.getAffineValueMap().isFunctionOf(0, iv);
 }
 
+/// Checks if an affine load or store access depends on `forOp'. This also
+/// transitively checks if the load/store is dependent on another loop IV which
+/// in turn uses `forOp` is its loop bounds.
+//
+/// Pre-requisite: Loop bounds should be in canonical form.
+template <typename LoadOrStoreOp>
+bool mlir::isInvariantAccess(LoadOrStoreOp memOp, AffineForOp forOp) {
+
+  for (auto operand : memOp.getMapOperands()) {
+    if (!isAccessIndexInvariant(forOp.getInductionVar(), operand)) {
+      return false;
+    }
+  }
+  // Check whether other for op that use this IV as a bound operand impact the
+  // access.
+  DenseSet<Operation *> depForOps;
+  for (auto &use : forOp.getInductionVar().getUses()) {
+    if (auto depForOp = dyn_cast<AffineForOp>(use.getOwner()))
+      depForOps.insert(depForOp.getOperation());
+  }
+
+  // TODO/FIXME: assert if affine for op bounds are in canonical form.
+  for (auto depForOp : depForOps) {
+    if (!isInvariantAccess(memOp, cast<AffineForOp>(depForOp)))
+      return false;
+  }
+
+  return true;
+}
+
+// Explicitly instantiate the template so that the compiler knows we need them.
+template bool mlir::isInvariantAccess(AffineLoadOp loadOp, AffineForOp);
+template bool mlir::isInvariantAccess(AffineStoreOp loadOp, AffineForOp);
+
 DenseSet<Value> mlir::getInvariantAccesses(Value iv, ArrayRef<Value> indices) {
   DenseSet<Value> res;
   for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
