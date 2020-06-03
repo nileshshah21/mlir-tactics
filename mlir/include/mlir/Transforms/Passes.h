@@ -89,6 +89,9 @@ std::unique_ptr<Pass> createSCCPPass();
 /// Creates a pass which delete symbol operations that are unreachable. This
 /// pass may *only* be scheduled on an operation that defines a SymbolTable.
 std::unique_ptr<Pass> createSymbolDCEPass();
+
+/// Hop.
+std::unique_ptr<OperationPass<FuncOp>> createHigherOrderPolyhedralOptPass();
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H

@@ -124,8 +124,7 @@ public:
 
   /// If this value is the result of an operation of type OpTy, return the
   /// operation that defines it.
-  template <typename OpTy>
-  OpTy getDefiningOp() const {
+  template <typename OpTy> OpTy getDefiningOp() const {
     return llvm::dyn_cast_or_null<OpTy>(getDefiningOp());
   }
 
@@ -346,6 +345,11 @@ private:
 inline ::llvm::hash_code hash_value(Value arg) {
   return ::llvm::hash_value(arg.ownerAndKind.getOpaqueValue());
 }
+
+// Replaces all uses of `orig` with `replacement` except if the user is listed
+// in `exceptions`.
+void replaceAllUsesExcept(Value orig, Value replacement,
+                          const SmallPtrSetImpl<Operation *> &exceptions);
 
 } // namespace mlir
 

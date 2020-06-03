@@ -134,8 +134,7 @@ static void printStandardCastOp(Operation *op, OpAsmPrinter &p) {
 }
 
 /// A custom cast operation verifier.
-template <typename T>
-static LogicalResult verifyCastOp(T op) {
+template <typename T> static LogicalResult verifyCastOp(T op) {
   auto opType = op.getOperand().getType();
   auto resType = op.getType();
   if (!T::areCastCompatible(opType, resType))
@@ -292,8 +291,7 @@ static ParseResult parseAllocLikeOp(OpAsmParser &parser,
   return success();
 }
 
-template <typename AllocLikeOp>
-static LogicalResult verify(AllocLikeOp op) {
+template <typename AllocLikeOp> static LogicalResult verify(AllocLikeOp op) {
   static_assert(llvm::is_one_of<AllocLikeOp, AllocOp, AllocaOp>::value,
                 "applies to only alloc or alloca");
   auto memRefType = op.getResult().getType().template dyn_cast<MemRefType>();
@@ -1919,6 +1917,68 @@ bool MemRefCastOp::areCastCompatible(Type a, Type b) {
 }
 
 OpFoldResult MemRefCastOp::fold(ArrayRef<Attribute> operands) {
+  return impl::foldCastOp(*this);
+}
+
+//===----------------------------------------------------------------------===//
+// MemRefShapeCastOp
+//===----------------------------------------------------------------------===//
+
+bool MemRefShapeCastOp::areCastCompatible(Type a, Type b) {
+  auto aT = a.dyn_cast<MemRefType>();
+  auto bT = b.dyn_cast<MemRefType>();
+
+  if (!aT || !bT)
+    return false;
+
+  if (aT.getAffineMaps() != bT.getAffineMaps())
+    return false;
+
+  if (aT.getMemorySpace() != bT.getMemorySpace())
+    return false;
+
+  if (aT.getRank() != bT.getRank())
+    return false;
+
+  // With rank 0, there is no vec cast.
+  if (aT.getRank() == 0)
+    return false;
+
+  // Should have the same shape up until the last n-1 dimensions.
+  // Replace this by std::equal.
+  for (unsigned i = 0, e = aT.getRank() - 1; i < e; ++i)
+    if (aT.getDimSize(i) != bT.getDimSize(i))
+      return false;
+
+  // Source memref can't have vector element type.
+  if (auto shapedEltType = aT.getElementType().dyn_cast<ShapedType>())
+    return false;
+
+  auto shapedEltTypeB = bT.getElementType().dyn_cast<ShapedType>();
+  if (!shapedEltTypeB)
+    return false;
+
+  auto eltA = aT.getElementType();
+  auto eltB = shapedEltTypeB.getElementType();
+  if (eltA != eltB)
+    return false;
+
+  int64_t lastDimA = aT.getShape().back();
+  int64_t lastDimB = bT.getShape().back();
+
+  // If one of them is dynamic but not the other, they are incompatible.
+  if (lastDimA * lastDimB < 0)
+    return false;
+
+  if (lastDimA != MemRefType::kDynamicSize &&
+      lastDimB != MemRefType::kDynamicSize &&
+      lastDimA / shapedEltTypeB.getNumElements() != lastDimB)
+    return false;
+
+  return true;
+}
+
+OpFoldResult MemRefShapeCastOp::fold(ArrayRef<Attribute> operands) {
   return impl::foldCastOp(*this);
 }
 

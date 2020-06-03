@@ -1850,6 +1850,36 @@ def MemRefCastOp : CastOp<"memref_cast", [
 }
 
 //===----------------------------------------------------------------------===//
+// MemRefShapeCastOp
+//===----------------------------------------------------------------------===//
+
+def MemRefShapeCastOp : CastOp<"memref_shape_cast"> {
+  let summary = "memref shape cast operation";
+  let description = [{
+    The "memref_shape_cast" operation converts a memref from an non-vector
+    element type to another memref of a vector elemental type while not changing
+    the source memref's element type. The last dimension size of the source
+    dimension is divided (floor division) by the vector size to obtain the
+    corresponding dimension for target memref type.
+
+    %MV = memref_shape_cast %M : memref<64x16xf32> to memref<64x2xvector<8xf32>>
+    %AV = memref_shape_cast %A : memref<?x?xf32> to memref<?x?xvector<8xf32>>
+  }];
+
+  let arguments = (ins AnyMemRef:$source);
+  let results = (outs AnyMemRef);
+
+  let extraClassDeclaration = [{
+    /// Return true if `a` and `b` are valid operand and result pairs for
+    /// the operation.
+    static bool areCastCompatible(Type a, Type b);
+
+    /// The result of a memref_shape_cast is always a memref.
+    MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // MulFOp
 //===----------------------------------------------------------------------===//
 

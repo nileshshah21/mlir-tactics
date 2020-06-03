@@ -406,4 +406,9 @@ def SymbolDCE : Pass<"symbol-dce"> {
   let constructor = "mlir::createSymbolDCEPass()";
 }
 
+def HigherOrderPolyhedralOpt : FunctionPass<"hopt"> {
+  let summary = "Run higher order polyhedral optimization";
+  let constructor = "mlir::createHigherOrderPolyhedralOptPass()"; 
+}
+
 #endif // MLIR_TRANSFORMS_PASSES

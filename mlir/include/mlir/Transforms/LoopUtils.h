@@ -15,6 +15,7 @@
 #ifndef MLIR_TRANSFORMS_LOOP_UTILS_H
 #define MLIR_TRANSFORMS_LOOP_UTILS_H
 
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Block.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
@@ -165,6 +166,11 @@ struct AffineCopyOptions {
   unsigned tagMemorySpace;
   // Capacity of the fast memory space in bytes.
   uint64_t fastMemCapacityBytes;
+  // Fast buffer data layout remap (for pointwise copying only, i.e., with
+  // generateDma = false). If specified, indices are remapped using it to
+  // generate new indices, effectively enforcing a new layout; row major
+  // layout is unsed if left unspecified.
+  AffineMap fastBufferLayout;
 };
 
 /// Performs explicit copying for the contiguous sequence of operations in the
@@ -181,7 +187,8 @@ struct AffineCopyOptions {
 uint64_t affineDataCopyGenerate(Block::iterator begin, Block::iterator end,
                                 const AffineCopyOptions &copyOptions,
                                 Optional<Value> filterMemRef,
-                                DenseSet<Operation *> &copyNests);
+                                DenseSet<Operation *> &copyNests,
+                                SmallVectorImpl<Value> *fastBufs = nullptr);
 
 /// A convenience version of affineDataCopyGenerate for all ops in the body of
 /// an AffineForOp.
@@ -297,6 +304,18 @@ separateFullTiles(MutableArrayRef<AffineForOp> nest,
 
 /// Move loop invariant code out of `looplike`.
 LogicalResult moveLoopInvariantCode(LoopLikeOpInterface looplike);
+
+/// Vectorizes a loop (either outer or inner, with a perfect or imperfectly
+/// nested body). `simdWidth` is the bit width of the vectors on target.
+LogicalResult loopVectorize(AffineForOp forOp, unsigned simdWidth,
+                            DenseMap<Value, Value> *vecMemRefs = nullptr);
+
+/// Replaces affine load and store accesses on memref's in `forOp' with accesses
+/// to a scalar or a single element memref in the case of loop passthroughs
+/// (scalars that are live out of a loop). Load/store accesses that are loop
+/// invariant are hoisted out of the loop when that's valid.
+//  TODO: This currently works only on innermost affine for op's.
+void scalarReplace(AffineForOp forOp);
 
 } // end namespace mlir
 

@@ -83,6 +83,10 @@ bool isVectorizableLoopBody(AffineForOp loop, int *memRefDim,
 // TODO: extend this to check for memory-based dependence violation when we have
 // the support.
 bool isOpwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts);
+
+template <typename LoadOrStoreOp>
+bool isInvariantAccess(LoadOrStoreOp memOp, AffineForOp forOp);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_LOOP_ANALYSIS_H
