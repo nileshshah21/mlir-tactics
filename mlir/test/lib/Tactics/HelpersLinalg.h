@@ -74,8 +74,8 @@ createLinalgReshapeOp(mlir::OpBuilder &builder, mlir::Location loc,
 
   mlir::edsc::ScopedContext scope(builder, loc);
   auto ctx = input.getContext();
-  llvm::SmallVector<mlir::AffineExpr, 4> dimPartitionOne;
-  llvm::SmallVector<mlir::AffineExpr, 4> dimPartitionTwo;
+  llvm::SmallVector<mlir::AffineExpr, 2> dimPartitionOne;
+  llvm::SmallVector<mlir::AffineExpr, 2> dimPartitionTwo;
 
   // create affine exprs using the position
   // specified in the 'indexPartitionOne' and 'indexPartitionTwo'
@@ -110,20 +110,20 @@ createLinalgReshapeOp(mlir::OpBuilder &builder, mlir::Location loc,
     if (destinationType)
       return mlir::edsc::intrinsics::linalg_reshape(
           destinationType, input,
-          llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimPartitionOne,
+          llvm::ArrayRef<mlir::linalg::ReassociationExprs>{dimPartitionOne,
                                                            {dimPartitionTwo}});
     else
       return mlir::edsc::intrinsics::linalg_reshape(
-          input, llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{
+          input, llvm::ArrayRef<mlir::linalg::ReassociationExprs>{
                      dimPartitionOne, {dimPartitionTwo}});
   }
   if (destinationType)
     return mlir::edsc::intrinsics::linalg_reshape(
         destinationType, input,
-        llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{dimPartitionTwo,
+        llvm::ArrayRef<mlir::linalg::ReassociationExprs>{dimPartitionTwo,
                                                          {dimPartitionOne}});
   return mlir::edsc::intrinsics::linalg_reshape(
-      input, llvm::ArrayRef<llvm::ArrayRef<mlir::AffineExpr>>{
+      input, llvm::ArrayRef<mlir::linalg::ReassociationExprs>{
                  dimPartitionOne, {dimPartitionTwo}});
 }
 
