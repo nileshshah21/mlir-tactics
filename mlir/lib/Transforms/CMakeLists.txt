@@ -21,6 +21,7 @@ add_mlir_library(MLIRTransforms
   ViewOpGraph.cpp
   ViewRegionGraph.cpp
   HigherOrderPolyhedralOpt.cpp
+  BlisPolyhedralOpt.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Transforms

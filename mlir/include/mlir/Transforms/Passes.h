@@ -92,6 +92,7 @@ std::unique_ptr<Pass> createSymbolDCEPass();
 
 /// Hop.
 std::unique_ptr<OperationPass<FuncOp>> createHigherOrderPolyhedralOptPass();
+std::unique_ptr<OperationPass<FuncOp>> createBlisPolyhedralOptPass();
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H
