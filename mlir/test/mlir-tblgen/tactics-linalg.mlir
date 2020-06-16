@@ -1,4 +1,4 @@
-// RUN: mlir-opt -mlir-disable-threading -test-tactics-linalg --debug %s | FileCheck %s
+// RUN: mlir-opt -mlir-disable-threading -test-tactics-linalg %s | FileCheck %s
 
 func @gemmT(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>) {
   // CHECK: linalg.matmul
@@ -35,9 +35,11 @@ func @gemm(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>) 
 }
 
 func @contraction.ab.acd.dbc(%C: memref<1024x1024xf32>, %A: memref<1024x32x32xf32>, %B: memref<32x1024x32xf32>) {
-  // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d2, d0, d1) : memref<32x1024x32xf32>
+  // CHECK: memref_cast %{{.*}} : memref<32x1024x32xf32> to memref<?x?x?xf32>
+  // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d2, d0, d1) : memref<?x?x?xf32>
+  // CHECK: memref_cast %{{.*}} : memref<?x?x?xf32> to memref<32x32x1024xf32>
   // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<1024x32x32xf32> into memref<1024x1024xf32>
-  // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32, #{{.*}}> into memref<1024x1024xf32, #{{.*}}>
+  // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32> into memref<1024x1024xf32>
   // CHECK: linalg.matmul
   affine.for %a = 0 to 1024 {
     affine.for %b = 0 to 1024 {
@@ -57,12 +59,16 @@ func @contraction.ab.acd.dbc(%C: memref<1024x1024xf32>, %A: memref<1024x32x32xf3
 }
 
 func @contraction.abc.acd.db(%C: memref<32x1024x32xf32>, %A: memref<32x32x1024xf32>, %B: memref<1024x1024xf32>) {
-  // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d0, d2, d1) : memref<32x1024x32xf32>
-  // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32, #{{.*}}> into memref<?x1024xf32, #{{.*}}>
+  // CHECK: memref_cast %{{.*}} : memref<32x1024x32xf32> to memref<?x?x?xf32>
+  // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d0, d2, d1) : memref<?x?x?xf32>
+  // CHECK: memref_cast %{{.*}} : memref<?x?x?xf32> to memref<32x32x1024xf32>
+  // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32> into memref<1024x1024xf32>
   // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<32x32x1024xf32> into memref<1024x1024xf32>
   // CHECK: linalg.matmul
-  // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<?x1024xf32, #{{.*}}> into memref<32x32x1024xf32, #{{.*}}>
-  // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d0, d2, d1) : memref<32x32x1024xf32, #{{.*}}>
+  // CHECK: linalg.reshape %{{.*}} [#{{.*}}, #{{.*}}] : memref<1024x1024xf32> into memref<32x32x1024xf32>
+  // CHECK: memref_cast %{{.*}} : memref<32x32x1024xf32> to memref<?x?x?xf32>
+  // CHECK: linalg.transpose %{{.*}} (d0, d1, d2) -> (d0, d2, d1) : memref<?x?x?xf32>
+  // CHECK: memref_cast %{{.*}} : memref<?x?x?xf32> to memref<32x1024x32xf32>
   affine.for %a = 0 to 32 {
     affine.for %b = 0 to 1024 {
       affine.for %c = 0 to 32 {
@@ -82,7 +88,7 @@ func @contraction.abc.acd.db(%C: memref<32x1024x32xf32>, %A: memref<32x32x1024xf
 
 func @mvt(%x1: memref<1024xf32>, %y1: memref<1024xf32>, %A: memref<1024x1024xf32>,
           %x2: memref<1024xf32>, %y2: memref<1024xf32>) {
-  // CHECK: linalg.matvec(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : memref<f32>, memref<f32>, memref<1024x1024xf32>, memref<1024xf32>, memref<1024xf32> 
+  // CHECK: linalg.matvec(%1, %0, %arg2, %arg1, %arg0) : memref<f32>, memref<f32>, memref<1024x1024xf32>, memref<1024xf32>, memref<1024xf32>
   affine.for %i = 0 to 1024 {
     affine.for %j = 0 to 1024 {
       %0 = affine.load %x1[%i] : memref<1024xf32>
@@ -92,7 +98,7 @@ func @mvt(%x1: memref<1024xf32>, %y1: memref<1024xf32>, %A: memref<1024x1024xf32
       %4 = addf %0, %3 : f32
       affine.store %4, %x1[%i] : memref<1024xf32>
     }
-  } 
+  }
   return
 }
 
@@ -118,6 +124,7 @@ func @distributed2mm(%arg0: memref<800x1100xf32>,
       }
     }
     // tmp[i][j] += alpha * A[i][k] * B[k][j]
+    // CHECK: linalg.matmul
     affine.for %arg7 = 0 to 800 {
       affine.for %arg8 = 0 to 900 {
         affine.for %arg9 = 0 to 1100 {
@@ -132,6 +139,7 @@ func @distributed2mm(%arg0: memref<800x1100xf32>,
       }
     }
     // D[i][j] += tmp[i][k] * C[k][j]
+    // CHECK: linalg.matmul
     affine.for %arg7 = 0 to 800 {
       affine.for %arg8 = 0 to 1200 {
         affine.for %arg9 = 0 to 900 {
@@ -159,7 +167,7 @@ func @contraction.abc.ad.bdc(%C: memref<1024x32x32xf32>, %A: memref<1024x1024xf3
           %4 = addf %2, %3 : f32
           affine.store %4, %C[%a, %b, %c] : memref<1024x32x32xf32>
         }
-      }
+     }
     }
   }
   return
