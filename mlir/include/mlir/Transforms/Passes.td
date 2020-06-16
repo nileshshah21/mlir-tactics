@@ -406,4 +406,9 @@ def HigherOrderPolyhedralOpt : FunctionPass<"hopt"> {
   let constructor = "mlir::createHigherOrderPolyhedralOptPass()"; 
 }
 
+def BlisPolyhedralOpt : FunctionPass<"blis"> {
+  let summary = "Run the Blis optimization";
+  let constructor = "mlir::createBlisPolyhedralOptPass()";
+}
+
 #endif // MLIR_TRANSFORMS_PASSES
