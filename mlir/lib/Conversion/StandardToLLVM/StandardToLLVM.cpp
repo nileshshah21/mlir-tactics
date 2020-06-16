@@ -2377,7 +2377,7 @@ struct MemRefShapeCastOpLowering
                ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto memRefShapeCastOp = cast<MemRefShapeCastOp>(op);
-    OperandAdaptor<MemRefShapeCastOp> transformed(operands);
+    MemRefShapeCastOp::Adaptor transformed(operands);
     auto targetType = memRefShapeCastOp.getType();
     auto sourceType =
         memRefShapeCastOp.getOperand().getType().cast<MemRefType>();
