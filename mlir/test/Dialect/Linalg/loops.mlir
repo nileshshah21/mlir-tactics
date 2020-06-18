@@ -117,7 +117,7 @@ func @dot(%arg0: memref<?xi8>, %M: index) {
   %1 = view %arg0[%c0][%M] : memref<?xi8> to memref<?xf32>
   %2 = view %arg0[%c0][%M] : memref<?xi8> to memref<?xf32>
   %3 = view %arg0[%c0][] : memref<?xi8> to memref<f32>
-  linalg.dot(%1, %2, %3) : memref<?xf32>, memref<?xf32>, memref<f32>
+  linalg.dot %1, %2, %3 : (memref<?xf32>, memref<?xf32>, memref<f32>)
   return
 }
 // CHECKLOOP-LABEL: func @dot(%{{.*}}: memref<?xi8>,
@@ -148,7 +148,9 @@ func @dot(%arg0: memref<?xi8>, %M: index) {
 
 
 func @dot_view(%arg0: memref<?xf32, offset: ?, strides: [1]>, %arg1: memref<?xf32, offset: ?, strides: [1]>, %arg2: memref<f32>) {
-  linalg.dot(%arg0, %arg1, %arg2) : memref<?xf32, offset: ?, strides: [1]>, memref<?xf32, offset: ?, strides: [1]>, memref<f32>
+  linalg.dot %arg0, %arg1, %arg2  : (memref<?xf32, offset: ?, strides: [1]>, 
+                                     memref<?xf32, offset: ?, strides: [1]>, 
+                                     memref<f32>)
   return
 }
 // CHECKLOOP-LABEL: func @dot_view(
