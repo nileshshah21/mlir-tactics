@@ -757,13 +757,10 @@ Value SliceOp::getViewSource() { return view(); }
 //===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
-void mlir::linalg::TransposeOp::build(OpBuilder &b, OperationState &result,
-                                      Value view, AffineMapAttr permutation,
-                                      ArrayRef<NamedAttribute> attrs) {
-  auto permutationMap = permutation.getValue();
-  assert(permutationMap);
 
-  auto memRefType = view.getType().cast<MemRefType>();
+static MemRefType getResultMemRefType(AffineMap permutationMap, Type viewType,
+                                      MLIRContext *context) {
+  auto memRefType = viewType.cast<MemRefType>();
   auto rank = memRefType.getRank();
   auto originalSizes = memRefType.getShape();
   // Compute permuted sizes.
@@ -778,12 +775,21 @@ void mlir::linalg::TransposeOp::build(OpBuilder &b, OperationState &result,
   auto res = getStridesAndOffset(memRefType, strides, offset);
   assert(succeeded(res) && strides.size() == static_cast<unsigned>(rank));
   (void)res;
-  auto map = makeStridedLinearLayoutMap(strides, offset, b.getContext());
+  auto map = makeStridedLinearLayoutMap(strides, offset, context);
   map = permutationMap ? map.compose(permutationMap) : map;
   // Compute result type.
   MemRefType resultType =
       MemRefType::Builder(memRefType).setShape(sizes).setAffineMaps(map);
+  return resultType;
+}
 
+void mlir::linalg::TransposeOp::build(OpBuilder &b, OperationState &result,
+                                      Value view, AffineMapAttr permutation,
+                                      ArrayRef<NamedAttribute> attrs) {
+  auto permutationMap = permutation.getValue();
+  assert(permutationMap && "expect valid permutation");
+  auto resultType =
+      getResultMemRefType(permutationMap, view.getType(), b.getContext());
   build(b, result, resultType, view, attrs);
   result.addAttribute(TransposeOp::getPermutationAttrName(), permutation);
 }
@@ -803,8 +809,21 @@ static ParseResult parseTransposeOp(OpAsmParser &parser,
   if (parser.parseOperand(view) || parser.parseAffineMap(permutation) ||
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
-      parser.resolveOperand(view, type, result.operands) ||
-      parser.addTypeToList(type, result.types))
+      parser.resolveOperand(view, type, result.operands))
+    return failure();
+
+  if (!permutation)
+    return parser.emitError(parser.getNameLoc(), "invalid permutation");
+  if (!permutation.isPermutation())
+    return parser.emitError(parser.getNameLoc(), "expected a permutation map");
+  if (permutation.getNumDims() != type.cast<MemRefType>().getRank())
+    return parser.emitError(
+        parser.getNameLoc(),
+        "expected a permutation map of same rank as the view");
+
+  MemRefType resultType =
+      getResultMemRefType(permutation, type, permutation.getContext());
+  if (parser.addTypeToList(resultType, result.types))
     return failure();
 
   result.addAttribute(TransposeOp::getPermutationAttrName(),
