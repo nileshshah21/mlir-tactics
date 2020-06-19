@@ -295,6 +295,22 @@ void emitScalarImplementation(ArrayRef<Value> allIvs, FillOp fillOp) {
   nPar > 0 ? O(ivs) = fillOp.value() : O() = fillOp.value();
 }
 
+class LinalgScopedEmitter<IndexedValueType, MatmulOp> {
+public:
+  static void emitScalarImplementation(ArrayRef<Value> allIvs,
+                                       MatmulOp matmulOp) {
+    assert(matmulOp.hasBufferSemantics() &&
+           "expected linalg op with buffer semantics");
+    assert(allIvs.size() == 3);
+    Value i(allIvs[0]), j(allIvs[1]), r_k(allIvs[2]);
+    IndexedValueType beta(matmulOp.getInput(0)), alpha(matmulOp.getInput(1)),
+        A(matmulOp.getInput(2)), B(matmulOp.getInput(3)),
+        C(matmulOp.getOutputBuffer(0));
+    // Emit scalar form.
+    C(i, j) = beta() * C(i, j) + alpha() * (A(i, r_k) * B(r_k, j));
+  }
+};
+
 template <typename IndexedValueType>
 Value getConvOpInput(ConvOp convOp, StdIndexedValue im,
                      MutableArrayRef<Value> imIdx) {
