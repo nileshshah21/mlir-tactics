@@ -9,17 +9,17 @@
 
 namespace {
 
-template <typename TypeAlpha, typename TypeBeta>
-void createLinalgMatmulOp(mlir::OpBuilder &builder, mlir::Location loc,
-                          TypeBeta beta, TypeAlpha alpha, mlir::Value C,
-                          mlir::Value A, mlir::Value B) {
+template <typename Op, typename TypeAlpha, typename TypeBeta>
+void createLinalgOp(mlir::OpBuilder &builder, mlir::Location &loc,
+                    TypeBeta beta, TypeAlpha alpha, mlir::Value opOne,
+                    mlir::Value opTwo, mlir::Value opThree) {
   static_assert(((std::is_same<TypeBeta, mlir::Value>::value) ||
                  (std::is_same<TypeBeta, int>::value)),
                 "expect mlir::Value or int");
   static_assert(((std::is_same<TypeAlpha, mlir::Value>::value) ||
                  (std::is_same<TypeAlpha, int>::value)),
                 "expect mlir::Value or int");
-  auto memref = C.getType().dyn_cast<mlir::MemRefType>();
+  auto memref = opOne.getType().dyn_cast<mlir::MemRefType>();
   auto type = memref.getElementType();
   // MatmulOp expect only memref types. Constants
   // are modelled as memref type of rank 0. Thus
@@ -42,7 +42,23 @@ void createLinalgMatmulOp(mlir::OpBuilder &builder, mlir::Location loc,
       builder
           .create<mlir::linalg::FillOp>(loc, rankZeroMemrefAlpha, constantAlpha)
           .getOutputBuffer(0);
-  builder.create<mlir::linalg::MatmulOp>(loc, betaV, alphaV, C, A, B);
+  builder.create<Op>(loc, betaV, alphaV, opOne, opTwo, opThree);
+}
+
+template <typename TypeAlpha, typename TypeBeta>
+void createLinalgMatvecOp(mlir::OpBuilder &builder, mlir::Location loc,
+                          TypeBeta beta, TypeAlpha alpha, mlir::Value A,
+                          mlir::Value y, mlir::Value x) {
+  return createLinalgOp<mlir::linalg::MatvecOp>(builder, loc, beta, alpha, A, y,
+                                                x);
+}
+
+template <typename TypeAlpha, typename TypeBeta>
+void createLinalgMatmulOp(mlir::OpBuilder &builder, mlir::Location loc,
+                          TypeBeta beta, TypeAlpha alpha, mlir::Value C,
+                          mlir::Value A, mlir::Value B) {
+  return createLinalgOp<mlir::linalg::MatmulOp>(builder, loc, beta, alpha, C, A,
+                                                B);
 }
 
 mlir::Value

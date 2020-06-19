@@ -180,9 +180,11 @@ def FillOp : LinalgStructured_Op<"fill", [NInputs<0>, NOutputs<1>]> {
   let hasFolder = 1;
 }
 
-def MatvecOp : LinalgStructured_Op<"matvec", [NInputs<2>, NOutputs<1>]> {
+def MatvecOp : LinalgStructured_Op<"matvec", [NInputs<4>, NOutputs<1>]> {
 
-  let arguments = (ins AnyStridedMemRefOfRank<2>,
+  let arguments = (ins AnyStridedMemRefOfRank<0>,
+                       AnyStridedMemRefOfRank<0>,
+                       AnyStridedMemRefOfRank<2>,
                        AnyStridedMemRefOfRank<1>,
                        AnyStridedMemRefOfRank<1>);
 
@@ -192,12 +194,14 @@ def MatvecOp : LinalgStructured_Op<"matvec", [NInputs<2>, NOutputs<1>]> {
         getParallelIteratorTypeName(), getReductionIteratorTypeName()};
     }
 
-    // A(i, r_j) * B(r_j) -> C(i)
+    // A(i, r_j) * B(r_j) * alpha -> C(i) * beta
     llvm::Optional<SmallVector<AffineMap, 8>> referenceIndexingMaps() {
       MLIRContext *context = getContext();
       AffineExpr i, r_j;
       bindDims(context, i, r_j);
       return SmallVector<AffineMap, 8>{
+        AffineMap::get(2, 0, {}, context),
+        AffineMap::get(2, 0, {}, context),
         AffineMap::get(2, 0, {i, r_j}, context),
         AffineMap::get(2, 0, {r_j}, context),
         AffineMap::get(2, 0, {i}, context)
