@@ -264,22 +264,14 @@ void BuilderEmitter::emitMatvecLinalg(MatvecTy &mvi) {
   auto x = mvi.output;
   auto A = mvi.inputs[0];
   auto y = mvi.inputs[1];
-
-  // if alpha or beta are not '1' we cannot
-  // emit linalg, as at the moment constants
-  // are not supported.
   auto alpha = mvi.alpha;
   auto beta = mvi.beta;
-  if (!isConstantOne(alpha) || !isConstantOne(beta)) {
-    os << "assert(0 && \"alpha and beta not supported for Linalg\");\n";
-    return;
-  }
 
   os << formatv(
       R"(
-    rewriter.create<mlir::linalg::MatvecOp>(op.getLoc(), {0}, {1}, {2});
+    createLinalgMatvecOp(rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4});
     )",
-      A, y, x);
+      beta, alpha, A, y, x);
 }
 
 void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {

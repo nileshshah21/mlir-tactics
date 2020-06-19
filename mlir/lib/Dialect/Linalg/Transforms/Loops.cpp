@@ -243,6 +243,22 @@ void emitScalarImplementation(ArrayRef<Value> allIvs, DotOp dotOp) {
   C() = C() + A(r_i) * B(r_i);
 }
 
+class LinalgScopedEmitter<IndexedValueType, MatvecOp> {
+public:
+  static void emitScalarImplementation(ArrayRef<Value> allIvs,
+                                       MatvecOp matvecOp) {
+    assert(matvecOp.hasBufferSemantics() &&
+           "expected linalg op with buffer semantics");
+    assert(allIvs.size() == 2);
+    Value i(allIvs[0]), r_j(allIvs[1]);
+    IndexedValueType beta(matvecOp.getInput(0)), alpha(matvecOp.getInput(1)),
+        A(matvecOp.getInput(2)), B(matvecOp.getInput(3)),
+        C(matvecOp.getOutputBuffer(0));
+    // Emit scalar form.
+    C(i) = beta() * C(i) + alpha() * (A(i, r_j) * B(r_j));
+  }
+};
+
 class LinalgScopedEmitter<IndexedValueType, MatmulOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value> allIvs,
