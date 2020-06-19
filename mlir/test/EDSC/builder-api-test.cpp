@@ -332,6 +332,59 @@ TEST_FUNC(builder_helpers) {
   f.erase();
 }
 
+TEST_FUNC(im2Col) {
+  using namespace edsc::op;
+  auto f32Type = FloatType::getF32(&globalContext());
+  auto memrefTypeImg = MemRefType::get({4, 4}, f32Type, {}, 0);
+  auto memrefTypeCol = MemRefType::get({4, 9}, f32Type, {}, 0);
+
+  auto f = makeFunction("im2Col", {}, {memrefTypeImg, memrefTypeCol});
+  OpBuilder builder(f.getBody());
+  ScopedContext scope(builder, f.getLoc());
+
+  AffineIndexedValue ImgArray(f.getArgument(0));
+  AffineIndexedValue ColArray(f.getArgument(1));
+
+  Value width = std_constant_float(llvm::APFloat(4.0f), f32Type);
+  Value height = std_constant_float(llvm::APFloat(4.0f), f32Type);
+  Value channels = std_constant_float(llvm::APFloat(1.0f), f32Type);
+  Value kernel_w = std_constant_float(llvm::APFloat(2.0f), f32Type);
+  Value kernel_h = std_constant_float(llvm::APFloat(2.0f), f32Type);
+  Value pad_w = std_constant_float(llvm::APFloat(0.0f), f32Type);
+  Value pad_h = std_constant_float(llvm::APFloat(0.0f), f32Type);
+  Value stride_w = std_constant_float(llvm::APFloat(1.0f), f32Type);
+  Value stride_h = std_constant_float(llvm::APFloat(1.0f), f32Type);
+
+  Value zero = std_constant_float(llvm::APFloat(0.0f), f32Type);
+  Value one = std_constant_float(llvm::APFloat(1.0f), f32Type);
+  Value two = std_constant_float(llvm::APFloat(2.0f), f32Type);
+
+  Value height_col = (height + two * pad_h - kernel_h) / stride_h + one;
+  Value width_col = (width + two *pad_w = kernel_w) / stride_w + one;
+  Value channel_col = channels * kernel_h * kernel_w;
+
+  affineLoopBuilder(zero, channel_col, 1, [&](Value c) {
+    Value c_casted = std_index_cast(c, f32Type);
+    Value w_offset = c_casted % kernel_w;
+    Value h_offset = (c_casted / kernel_w) % kernel_h;
+    Value c_im = c_casted / (kernel_h * kernel_w);
+    affineLoopBuilder(zero, height_col, 1, [&](Value h) {
+      affineLoopBuilder(zero, width_col, 1, [&](Value w) {
+        Value h_casted = std_index_cast(h, f32Type);
+        Value w_casted = std_index_cast(w, f32Type);
+        Value h_pad = h_casted * stride_h - pad_h + h_offset;
+        Value w_pad = w_casted * stride_w - pad_w + w_offset;
+        Value dimRowCol = (c_casted * height_col + h_casted) * width_col;
+        Value dimRowImg = (c_im * height + h_pad) * width;
+        ColArray(dimRowCol, w) = ImgArray(dimRowImg, w_pad);
+      });
+    });
+  });
+
+  f.print(llvm::outs());
+  f.erase();
+}
+
 TEST_FUNC(insertion_in_block) {
   using namespace edsc::op;
   auto indexType = IndexType::get(&globalContext());
