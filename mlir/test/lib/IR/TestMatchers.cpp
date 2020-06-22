@@ -287,6 +287,33 @@ void test5(FuncOp f) {
   }
 }
 
+void test8(FuncOp f) {
+  auto ctx = f.getBody().getContext();
+  using namespace matchers;
+  {
+    AccessPatternContext pctx(ctx);
+    auto _i = m_Placeholder();
+    auto _j = m_Placeholder();
+    auto _A = m_ArrayPlaceholder();
+    auto exprInc = m_Op<AffineLoadOp>(_A({_i + 11, _j}));
+    auto exprOtherInc = m_Op<AffineLoadOp>(_A({_i + 1, _j}));
+    auto exprCoeff = m_Op<AffineLoadOp>(_A({2 * _i, _j}));
+    auto exprOtherCoeff = m_Op<AffineLoadOp>(_A({6 * _i, _j}));
+    auto exprCoeffAndInc = m_Op<AffineLoadOp>(_A({6 * _i + 3, _j}));
+
+    llvm::outs() << "Pattern loadOp A(i+11, j) matched "
+                 << countMatches(f, exprInc) << " times\n";
+    llvm::outs() << "Pattern loadOp A(i+1, j) matched "
+                 << countMatches(f, exprOtherInc) << " times\n";
+    llvm::outs() << "Pattern loadOp A(2*i, j) matched "
+                 << countMatches(f, exprCoeff) << " times\n";
+    llvm::outs() << "Pattern loadOp A(6*i, j) matched "
+                 << countMatches(f, exprOtherCoeff) << " times\n";
+    llvm::outs() << "Pattern loadOp A(6*i+3, j) matched "
+                 << countMatches(f, exprCoeffAndInc) << " times\n";
+  }
+}
+
 void test7(FuncOp f) {
   using mlir::matchers::m_AnyCapture;
 
@@ -351,6 +378,8 @@ void TestMatchers::runOnFunction() {
     test6(f);
   if (f.getName() == "chainMatmul")
     test7(f);
+  if (f.getName() == "matcherExpr")
+    test8(f);
 }
 
 namespace mlir {
