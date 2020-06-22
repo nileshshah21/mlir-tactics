@@ -300,6 +300,8 @@ void test8(FuncOp f) {
     auto exprCoeff = m_Op<AffineLoadOp>(_A({2 * _i, _j}));
     auto exprOtherCoeff = m_Op<AffineLoadOp>(_A({6 * _i, _j}));
     auto exprCoeffAndInc = m_Op<AffineLoadOp>(_A({6 * _i + 3, _j}));
+    auto exprOtherCoeffAndInc =
+        m_Op<AffineLoadOp>(_A({6 * _i + 5, 3 * _j + 4}));
 
     llvm::outs() << "Pattern loadOp A(i+11, j) matched "
                  << countMatches(f, exprInc) << " times\n";
@@ -311,6 +313,8 @@ void test8(FuncOp f) {
                  << countMatches(f, exprOtherCoeff) << " times\n";
     llvm::outs() << "Pattern loadOp A(6*i+3, j) matched "
                  << countMatches(f, exprCoeffAndInc) << " times\n";
+    llvm::outs() << "Pattern loadOp A(6*i+5, 3*j+4) matched "
+                 << countMatches(f, exprOtherCoeffAndInc) << " times\n";
   }
 }
 
