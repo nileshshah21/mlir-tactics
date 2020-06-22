@@ -201,3 +201,24 @@ func @matcherExpr(%A: memref<1024x1024xf32>) {
 //       CHECK: Pattern loadOp A(6*i, j) matched 0 times
 //       CHECK: Pattern loadOp A(6*i+3, j) matched 1 times
 //       CHECK: Pattern loadOp A(6*i+5, 3*j+4) matched 1 times
+
+func @placeholderEpxr(%out: memref<3x3xf32>, %filt: memref<3x3xf32>, %img: memref<5x5xf32>) {
+  affine.for %out_h = 0 to 3 {
+    affine.for %out_w = 0 to 3 {
+      affine.for %k_h = 0 to 3 {
+        affine.for %k_w = 0 to 3 {
+          %0 = affine.load %out[%out_h, %out_w] : memref<3x3xf32>
+          %1 = affine.load %filt[%k_h, %k_w] : memref<3x3xf32>
+          %2 = affine.load %img[%out_h + %k_h, %out_w + %k_w] : memref<5x5xf32>
+          %3 = mulf %1, %2 : f32
+          %4 = addf %3, %0 : f32
+          affine.store %4, %out[%out_h, %out_w] : memref<3x3xf32>
+        }
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: placeholderEpxr
+//       CHECK: Pattern loadOp A(_out_h + _k_h, _out_w + _k_w) matched 1 times

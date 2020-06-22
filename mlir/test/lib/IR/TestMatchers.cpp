@@ -318,6 +318,44 @@ void test8(FuncOp f) {
   }
 }
 
+void test9(FuncOp f) {
+  std::vector<SmallVector<AffineForOp, 4>> bands;
+  getNestedLoops(bands, f);
+  assert(bands.size() == 1 && "expect single band");
+  auto loops = bands[0];
+  assert(loops.size() == 4 && "expect a 4-d loop nest");
+
+  auto out_h = loops[0].getInductionVar();
+  auto out_w = loops[1].getInductionVar();
+  auto k_h = loops[2].getInductionVar();
+  auto k_w = loops[3].getInductionVar();
+
+  auto ctx = f.getBody().getContext();
+  using namespace matchers;
+  {
+    AccessPatternContext pctx(ctx);
+    auto _out_h = m_Placeholder();
+    auto _out_w = m_Placeholder();
+    auto _k_h = m_Placeholder();
+    auto _k_w = m_Placeholder();
+    auto _A = m_ArrayPlaceholder();
+
+    auto expr = m_Op<AffineLoadOp>(_A({_out_h + _k_h, _out_w + _k_w}));
+    llvm::outs() << "Pattern loadOp A(_out_h + _k_h, _out_w + _k_w) matched "
+                 << countMatches(f, expr) << " times\n";
+
+    auto matchedOutH = pctx[_out_h];
+    auto matchedOutW = pctx[_out_w];
+    auto matchedKW = pctx[_k_w];
+    auto matchedKH = pctx[_k_h];
+
+    assert(matchedOutH == out_h && "matching failed");
+    assert(matchedOutW == out_w && "matching failed");
+    assert(matchedKW == k_w && "matching failed");
+    assert(matchedKH == k_h && "matching failed");
+  }
+}
+
 void test7(FuncOp f) {
   using matchers::m_AnyCapture;
 
@@ -384,6 +422,8 @@ void TestMatchers::runOnFunction() {
     test7(f);
   if (f.getName() == "matcherExpr")
     test8(f);
+  if (f.getName() == "placeholderEpxr")
+    test9(f);
 }
 
 namespace mlir {
