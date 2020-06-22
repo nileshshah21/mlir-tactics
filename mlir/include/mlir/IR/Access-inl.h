@@ -9,16 +9,27 @@ bool op_load_store_matcher<OpClass>::matchLoadOrStoreOpInAffine(A op) {
   if (dims != placeholders_.size())
     return false;
   SmallVector<Value, 4> operands = op.getMapOperands();
+  int operandPos = 0;
   for (size_t dim = 0; dim < dims; dim++) {
     AffineExpr affine = op.getAffineMap().getResult(dim);
     // check affine expression.
     if (placeholders_[dim].pattern_.expr_ != affine)
       return false;
     auto matchingContext = placeholders_[dim].context();
-    auto isValid = matchingContext->assignToPlaceholder(operands[dim],
+    auto isValid = matchingContext->assignToPlaceholder(operands[operandPos++],
                                                         placeholders_[dim].id_);
     if (failed(isValid))
       return false;
+
+    // A placeholder can have multiple ids in case of
+    // operator overloading.
+    auto additionalIdsSize = placeholders_[dim].additionalIds_.size();
+    for (size_t i = 0; i < additionalIdsSize; i++) {
+      isValid = matchingContext->assignToPlaceholder(
+          operands[operandPos++], placeholders_[dim].additionalIds_[i]);
+      if (failed(isValid))
+        return false;
+    }
   }
   return true;
 }
