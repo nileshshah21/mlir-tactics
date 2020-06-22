@@ -40,7 +40,9 @@ public:
 public:
   AffinePattern() = delete;
   AffinePattern(MLIRContext *ctx)
-      : ctx_(ctx), expr_(AffineExpr()), constant_(0), coefficient_(1){};
+      : ctx_(ctx), expr_(AffineExpr()), constant_(0), coefficient_(1) {
+    bindDims(ctx, expr_, 0);
+  };
 };
 
 /// The matching context. It keeps track of what a given placeholder has already
@@ -84,6 +86,10 @@ public:
   details::AffinePattern pattern_;
   // non-const to allow default assignement operator.
   size_t id_;
+  // additional ids in case of operators overloading
+  // within placeholders. A better abstraction is
+  // needed i.e., `placeholderGroup`.
+  SmallVector<size_t, 4> additionalIds_;
   // FIXME: make me private.
   static details::MatchingContext *&context();
 
@@ -101,26 +107,42 @@ private:
 };
 
 inline m_Placeholder operator+(m_Placeholder p, int64_t i) {
-  p.pattern_.constant_ += i;
+  p.pattern_.expr_ = p.pattern_.expr_ + i;
   return p;
 }
 
 inline m_Placeholder operator-(m_Placeholder p, int64_t i) {
-  p.pattern_.constant_ -= i;
+  p.pattern_.expr_ = p.pattern_.expr_ - i;
   return p;
 }
 
 inline m_Placeholder operator*(int64_t i, m_Placeholder p) {
   if (i <= 0)
     llvm_unreachable("Invalid coefficient for Placeholder");
-  p.pattern_.coefficient_ *= i;
+  p.pattern_.expr_ = p.pattern_.expr_ * i;
   return p;
 }
 
 inline m_Placeholder operator*(m_Placeholder p, int64_t i) {
   if (i <= 0)
     llvm_unreachable("Invalid coefficient for Placeholder");
-  p.pattern_.coefficient_ *= i;
+  p.pattern_.expr_ = p.pattern_.expr_ * i;
+  return p;
+}
+
+inline m_Placeholder operator+(m_Placeholder p, m_Placeholder p1) {
+  if (p1.id_ == p.id_) {
+    p.pattern_.expr_ = p.pattern_.expr_ + p1.pattern_.expr_;
+    return p;
+  }
+  // add dimension.
+  auto ctx = p.pattern_.expr_.getContext();
+  auto pos = p.pattern_.expr_.cast<AffineDimExpr>().getPosition();
+  AffineExpr remapped;
+  bindDims(ctx, remapped, static_cast<int>(++pos));
+  remapped = p1.pattern_.expr_.replaceDimsAndSymbols({remapped}, {});
+  p.pattern_.expr_ = p.pattern_.expr_ + remapped;
+  p.additionalIds_.push_back(p1.id_);
   return p;
 }
 
@@ -156,6 +178,24 @@ public:
   Value operator[](const m_Placeholder &pl) const;
 };
 
+// Once we know the placeholder position we re-map
+// the map dimension, starting from pos `pos`. Before
+// the remapping the map dimension do not have any meaning.
+inline AffineExpr makeAffineExpr(MLIRContext *ctx, AffineExpr &expr, int &pos) {
+  int numberOfInductions = 0;
+  expr.walk([&numberOfInductions](AffineExpr e) {
+    if (e.dyn_cast<AffineDimExpr>())
+      numberOfInductions++;
+  });
+  SmallVector<AffineExpr, 4> inductions;
+  for (int i = 0; i < numberOfInductions; i++) {
+    inductions.push_back(AffineExpr());
+    bindDims(ctx, inductions[i], pos);
+    pos++;
+  }
+  return expr.replaceDimsAndSymbols(inductions, {});
+}
+
 template <typename OpClass> class op_load_store_matcher {
 public:
   SmallVector<m_Placeholder, 4> placeholders_;
@@ -163,14 +203,11 @@ public:
     int pos = 0;
     for (auto &placeholder : placeholders_) {
       // At this point we know the placeholder
-      // position in the access. We create an
-      // affine map to match.
+      // position in the access. We re-map the
+      // affine expression starting at position `pos`.
       auto ctx = placeholder.context()->getContext();
-      detail::bindDims(ctx, placeholder.pattern_.expr_, pos++);
-      placeholder.pattern_.expr_ =
-          placeholder.pattern_.expr_ * placeholder.pattern_.coefficient_;
-      placeholder.pattern_.expr_ =
-          placeholder.pattern_.expr_ + placeholder.pattern_.constant_;
+      auto remapped = makeAffineExpr(ctx, placeholder.pattern_.expr_, pos);
+      placeholder.pattern_.expr_ = remapped;
     }
   };
   op_load_store_matcher() = delete;
