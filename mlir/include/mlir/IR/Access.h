@@ -168,9 +168,9 @@ public:
       auto ctx = placeholder.context()->getContext();
       detail::bindDims(ctx, placeholder.pattern_.expr_, pos++);
       placeholder.pattern_.expr_ =
-          placeholder.pattern_.expr_ + placeholder.pattern_.constant_;
-      placeholder.pattern_.expr_ =
           placeholder.pattern_.expr_ * placeholder.pattern_.coefficient_;
+      placeholder.pattern_.expr_ =
+          placeholder.pattern_.expr_ + placeholder.pattern_.constant_;
     }
   };
   op_load_store_matcher() = delete;

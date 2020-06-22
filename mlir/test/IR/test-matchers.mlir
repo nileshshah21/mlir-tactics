@@ -175,3 +175,16 @@ func @chainMatmul() {
 
 // CHECK-LABEL: chainMatmul
 //       CHECK: Pattern linalg.matmul matched 1 times
+
+func @matcherExpr(%A: memref<1024x1024xf32>) { 
+  affine.for %i = 0 to 256 {
+    affine.for %j = 0 to 256 {
+      %0 = affine.load %A[%i, %j] : memref<1024x1024xf32>
+      affine.store %0, %A[%i, %j] : memref<1024x1024xf32>
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: matcherExpr
+//       CHECK: Pattern loadOp A(2*i+1, j) matched 1 times
