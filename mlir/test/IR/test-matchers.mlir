@@ -187,6 +187,8 @@ func @matcherExpr(%A: memref<1024x1024xf32>) {
       affine.store %2, %A[%i, %j] : memref<1024x1024xf32>
       %3 = affine.load %A[6*%i+3, %j] : memref<1024x1024xf32>
       affine.store %3, %A[%i, %j] : memref<1024x1024xf32>
+      %4 = affine.load %A[6*%i+5, 3*%j+4] : memref<1024x1024xf32>
+      affine.store %4, %A[%i, %j] : memref<1024x1024xf32>
     }
   }
   return
@@ -198,3 +200,4 @@ func @matcherExpr(%A: memref<1024x1024xf32>) {
 //       CHECK: Pattern loadOp A(2*i, j) matched 1 times
 //       CHECK: Pattern loadOp A(6*i, j) matched 0 times
 //       CHECK: Pattern loadOp A(6*i+3, j) matched 1 times
+//       CHECK: Pattern loadOp A(6*i+5, 3*j+4) matched 1 times
