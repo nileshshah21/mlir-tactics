@@ -36,8 +36,8 @@ static unsigned countMatches(FuncOp f, Matcher &matcher) {
   return count;
 }
 
-using mlir::matchers::m_Any;
-using mlir::matchers::m_Val;
+using matchers::m_Any;
+using matchers::m_Val;
 static void test1(FuncOp f) {
   assert(f.getNumArguments() == 3 && "matcher test funcs must have 3 args");
 
@@ -179,7 +179,7 @@ void test3(FuncOp f) {
   auto k = loops[2].getInductionVar();
 
   auto ctx = f.getBody().getContext();
-  using namespace mlir::matchers;
+  using namespace matchers;
   {
     AccessPatternContext pctx(ctx);
     auto _i = m_Placeholder();
@@ -222,7 +222,7 @@ void test4(FuncOp f) {
     llvm_unreachable("matcher test func must have 3 loops");
 
   auto ctx = f.getBody().getContext();
-  using namespace mlir::matchers;
+  using namespace matchers;
   {
     AccessPatternContext pctx(ctx);
     auto _i = m_Placeholder();
@@ -256,7 +256,7 @@ void test5(FuncOp f) {
   auto k = loops[2].getInductionVar();
 
   auto ctx = f.getBody().getContext();
-  using namespace mlir::matchers;
+  using namespace matchers;
   {
     AccessPatternContext pctx(ctx);
     auto _i = m_Placeholder();
@@ -315,10 +315,10 @@ void test8(FuncOp f) {
 }
 
 void test7(FuncOp f) {
-  using mlir::matchers::m_AnyCapture;
+  using matchers::m_AnyCapture;
 
-  mlir::Value A1 = nullptr;
-  mlir::Value B1 = nullptr, B2 = nullptr, B3 = nullptr;
+  Value A1 = nullptr;
+  Value B1 = nullptr, B2 = nullptr, B3 = nullptr;
 
   auto p1 = m_Op<linalg::MatmulOp>(
       m_Any(), m_Any(), m_AnyCapture(A1), m_AnyCapture(B1),
@@ -333,7 +333,7 @@ void test7(FuncOp f) {
 
 void test6(FuncOp f) {
   assert(f.getNumArguments() == 4 && "matcher test func must have 2 args");
-  using namespace mlir::matchers;
+  using namespace matchers;
 
   auto a = m_Val(f.getArgument(0));
   auto b = m_Val(f.getArgument(1));
