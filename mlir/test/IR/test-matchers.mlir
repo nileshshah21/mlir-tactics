@@ -179,12 +179,22 @@ func @chainMatmul() {
 func @matcherExpr(%A: memref<1024x1024xf32>) { 
   affine.for %i = 0 to 256 {
     affine.for %j = 0 to 256 {
-      %0 = affine.load %A[%i, %j] : memref<1024x1024xf32>
+      %0 = affine.load %A[%i+11, %j] : memref<1024x1024xf32>
       affine.store %0, %A[%i, %j] : memref<1024x1024xf32>
+      %1 = affine.load %A[%i+1, %j] : memref<1024x1024xf32>
+      affine.store %1, %A[%i, %j] : memref<1024x1024xf32>
+      %2 = affine.load %A[2*%i, %j] : memref<1024x1024xf32>
+      affine.store %2, %A[%i, %j] : memref<1024x1024xf32>
+      %3 = affine.load %A[6*%i+3, %j] : memref<1024x1024xf32>
+      affine.store %3, %A[%i, %j] : memref<1024x1024xf32>
     }
   }
   return
 }
 
 // CHECK-LABEL: matcherExpr
-//       CHECK: Pattern loadOp A(2*i+1, j) matched 1 times
+//       CHECK: Pattern loadOp A(i+11, j) matched 1 times
+//       CHECK: Pattern loadOp A(i+1, j) matched 1 times
+//       CHECK: Pattern loadOp A(2*i, j) matched 1 times
+//       CHECK: Pattern loadOp A(6*i, j) matched 0 times
+//       CHECK: Pattern loadOp A(6*i+3, j) matched 1 times
