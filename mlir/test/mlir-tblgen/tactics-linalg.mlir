@@ -155,7 +155,9 @@ func @distributed2mm(%arg0: memref<800x1100xf32>,
     return
 }
 
-func @contraction.abc.ad.bdc(%C: memref<1024x32x32xf32>, %A: memref<1024x1024xf32>, %B: memref<32x1024x32xf32>) {
+func @contraction.abc.ad.bdc(%C: memref<1024x32x32xf32>, 
+                             %A: memref<1024x1024xf32>, 
+                             %B: memref<32x1024x32xf32>) {
   affine.for %a = 0 to 1024 {
     affine.for %b = 0 to 32 {
       affine.for %c = 0 to 32 {
@@ -171,4 +173,24 @@ func @contraction.abc.ad.bdc(%C: memref<1024x32x32xf32>, %A: memref<1024x1024xf3
     }
   }
   return
+}
+
+func @conv(%out: memref<3x3xf32>, %filt: memref<3x3xf32>, %img: memref<5x5xf32>) {
+  // CHECK-NOT: affine.for
+  // CHECK: return
+  affine.for %out_h = 0 to 3 {
+    affine.for %out_w = 0 to 3 {
+      affine.for %k_h = 0 to 3 {
+        affine.for %k_w = 0 to 3 {
+          %0 = affine.load %out[%out_h, %out_w] : memref<3x3xf32>
+          %1 = affine.load %filt[%k_h, %k_w] : memref<3x3xf32>
+          %2 = affine.load %img[%out_h + %k_h, %out_w + %k_w] : memref<5x5xf32>
+          %3 = mulf %1, %2 : f32
+          %4 = addf %0, %3 : f32
+          affine.store %4, %out[%out_h, %out_w] : memref<3x3xf32>
+        }
+      }
+    }
+  }
+  return 
 }
