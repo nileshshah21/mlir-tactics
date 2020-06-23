@@ -275,6 +275,10 @@ def MatVecWithConstantTranspose : Tactics<"x(i) += alpha * A(j,i) * y(j)", [
   eraseOpBuilder
 ]>;
 
+def Conv : Tactics<"out(out_h, out_w) += filt(k_h, k_w) * image(out_h + k_h, out_w + k_w)", [
+  eraseOpBuilder
+]>;
+
 /*
 TODO: hide eraseOpBuilder.
 */

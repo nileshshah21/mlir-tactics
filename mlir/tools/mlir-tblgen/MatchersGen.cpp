@@ -560,13 +560,6 @@ template <> void SymbolTableMap<Tensor>::dump() const {
   }
 }
 
-// Walk tree (see teckly).
-void walkTree(const TreeRef &tree, std::function<void(const TreeRef &)> fn) {
-  fn(tree);
-  for (auto e : tree->trees())
-    walkTree(e, fn);
-}
-
 // collect iterators from comprehension.
 using identifierInductions = SmallSet<std::string, 8>;
 using identifierTensors = SmallSet<std::pair<bool, std::string>, 8>;

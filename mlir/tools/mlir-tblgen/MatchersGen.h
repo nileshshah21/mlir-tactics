@@ -19,6 +19,14 @@ namespace mlir {
 
 namespace {
 
+// Walk tree (see teckly).
+void walkTree(const lang::TreeRef &tree,
+              std::function<void(const lang::TreeRef &)> fn) {
+  fn(tree);
+  for (auto e : tree->trees())
+    walkTree(e, fn);
+}
+
 // TODO: make matmulEntryBlas and MatVecEntryBlas
 // derivate classes of a common base one.
 // handy function to manipulate
@@ -118,13 +126,27 @@ bool operator<(const Tensor &t1, const Tensor &t2) {
   return t1S < t2S;
 }
 
+template <typename T> std::string getInductionVariable(T &tree) {
+  if (std::is_same<lang::Ident, T>::value)
+    return lang::Ident(tree).name();
+  // if we have multiple induction variables
+  // for an access (i.e., A(i + j)) we chain
+  // i and j together -> ij
+  std::string indVars = "";
+  walkTree(tree, [&](const lang::TreeRef t) {
+    if (t->kind() == lang::TK_IDENT)
+      indVars += lang::Ident(t).name();
+  });
+  return indVars;
+}
+
 template <typename T>
 Tensor Tensor::buildTensor(const lang::Ident &ident,
                            const lang::ListView<T> &indices) {
   auto tensorId = ident.name();
   std::vector<Index> tensorIndexes{};
   for (const auto &index : indices)
-    tensorIndexes.push_back(Index(lang::Ident(index).name()));
+    tensorIndexes.push_back(Index(getInductionVariable(index)));
   return Tensor(tensorId, tensorIndexes);
 }
 
@@ -305,6 +327,7 @@ private:
   void emitLoadOrStoreMatcherOp(const lang::Ident &ident,
                                 const lang::ListView<T> &indices,
                                 StringRef operation);
+  template <typename T> void emitTree(const T &tree);
 
   // emit an arithmetic operation. IsRhs is assert if we are dealing with
   // the rhs operand
@@ -318,6 +341,27 @@ private:
   void emitConstantOperationMatcher(const lang::Const &cst);
 };
 
+template <typename T> void TacticsEmitter::emitTree(const T &tree) {
+  if (std::is_same<lang::Ident, T>::value) {
+    os << "_" << lang::Ident(tree).name();
+    return;
+  }
+  // TODO make me generic.
+  bool printPlusAfterIdent = false;
+  walkTree(tree, [&](const lang::TreeRef t) {
+    if (t->kind() == '+') {
+      printPlusAfterIdent = true;
+    }
+    if (t->kind() == lang::TK_IDENT) {
+      os << "_" << lang::Ident(t).name();
+      if (printPlusAfterIdent) {
+        os << " + ";
+        printPlusAfterIdent = false;
+      }
+    }
+  });
+}
+
 // TODO: handle expressions (i.e., 2*i + 1.)
 template <typename T>
 void TacticsEmitter::emitLoadOrStoreMatcherOp(const lang::Ident &ident,
@@ -330,12 +374,11 @@ void TacticsEmitter::emitLoadOrStoreMatcherOp(const lang::Ident &ident,
   os << var << " = m_Op<" << operation << ">(";
   os << "_" << ident.name() << "({";
   for (size_t i = 0; i < indices.size(); i++) {
-    if (i == indices.size() - 1) {
-      os << "_";
-      os << lang::Ident(indices[indices.size() - 1]).name();
+    emitTree(indices[i]);
+    if (i == indices.size() - 1)
       os << "}));";
-    } else
-      os << "_" << lang::Ident(indices[i]).name() << ", ";
+    else
+      os << ", ";
   }
 }
 } // end namespace
