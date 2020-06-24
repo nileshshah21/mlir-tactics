@@ -222,3 +222,26 @@ func @placeholderEpxr(%out: memref<3x3xf32>, %filt: memref<3x3xf32>, %img: memre
 
 // CHECK-LABEL: placeholderEpxr
 //       CHECK: Pattern loadOp A(_out_h + _k_h, _out_w + _k_w) matched 1 times
+
+func @channelConv(%out: memref<3x3xf32>, %filt: memref<1x3x3xf32>, %img: memref<1x5x5xf32>) {
+  affine.for %ch = 0 to 1 {
+    affine.for %out_h = 0 to 3 {
+      affine.for %out_w = 0 to 3 {
+        affine.for %k_h = 0 to 3 {
+          affine.for %k_w = 0 to 3 {
+            %0 = affine.load %out[%out_h, %out_w] : memref<3x3xf32>
+            %1 = affine.load %filt[%ch, %k_h, %k_w] : memref<1x3x3xf32>
+            %2 = affine.load %img[%ch, %out_h + %k_h, %out_w + %k_w] : memref<1x5x5xf32>
+            %3 = mulf %1, %2 : f32
+            %4 = addf %0, %3 : f32
+            affine.store %4, %out[%out_h, %out_w] : memref<3x3xf32>
+          }
+        }
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: channelConv
+//       CHECK: conv matched 1 times

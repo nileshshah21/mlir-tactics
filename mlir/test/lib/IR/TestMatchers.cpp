@@ -356,6 +356,50 @@ void test9(FuncOp f) {
   }
 }
 
+void test10(FuncOp f) {
+  std::vector<SmallVector<AffineForOp, 4>> bands;
+  getNestedLoops(bands, f);
+  auto loops = bands[0];
+
+  auto ch = loops[0].getInductionVar();
+  auto out_h = loops[1].getInductionVar();
+  auto out_w = loops[2].getInductionVar();
+  auto k_h = loops[3].getInductionVar();
+  auto k_w = loops[4].getInductionVar();
+
+  auto ctx = f.getBody().getContext();
+  using namespace matchers;
+  {
+    AccessPatternContext pctx(ctx);
+    auto _ch = m_Placeholder();
+    auto _out_h = m_Placeholder();
+    auto _out_w = m_Placeholder();
+    auto _k_h = m_Placeholder();
+    auto _k_w = m_Placeholder();
+    auto _F = m_ArrayPlaceholder();
+    auto _I = m_ArrayPlaceholder();
+    auto _O = m_ArrayPlaceholder();
+
+    auto exprFilt = m_Op<AffineLoadOp>(_F({_ch, _k_h, _k_w}));
+    auto exprImg = m_Op<AffineLoadOp>(_I({_ch, _out_h + _k_h, _out_w + _k_w}));
+    auto exprOut = m_Op<AffineLoadOp>(_O({_out_h, _out_w}));
+    auto bodyMatcher =
+        m_Op<mlir::AddFOp>(exprOut, m_Op<mlir::MulFOp>(exprFilt, exprImg));
+    llvm::outs() << "conv matched " << countMatches(f, bodyMatcher)
+                 << " times\n";
+    auto matchedCh = pctx[_ch];
+    auto matchedOutH = pctx[_out_h];
+    auto matchedOutW = pctx[_out_w];
+    auto matchedKH = pctx[_k_h];
+    auto matchedKW = pctx[_k_w];
+    assert(matchedCh == ch);
+    assert(matchedOutH == out_h);
+    assert(matchedOutW == out_w);
+    assert(matchedKW == k_w);
+    assert(matchedKH == k_h);
+  }
+}
+
 void test7(FuncOp f) {
   using matchers::m_AnyCapture;
 
@@ -424,6 +468,8 @@ void TestMatchers::runOnFunction() {
     test8(f);
   if (f.getName() == "placeholderEpxr")
     test9(f);
+  if (f.getName() == "channelConv")
+    test10(f);
 }
 
 namespace mlir {
