@@ -186,8 +186,7 @@ static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
 }
 
 namespace {
-template <typename GenericOpType>
-struct BlockArgsVerifier {
+template <typename GenericOpType> struct BlockArgsVerifier {
   static LogicalResult verify(GenericOpType op, Block &block);
 };
 
@@ -874,6 +873,41 @@ static ParseResult parseTransposeOp(OpAsmParser &parser,
                       AffineMapAttr::get(permutation));
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// Im2ColOp
+//===----------------------------------------------------------------------===//
+
+void mlir::linalg::Im2ColOp::build(OpBuilder &b, OperationState &result,
+                                   Value img, Value dest,
+                                   ArrayRef<NamedAttribute> attrs) {
+  assert(img && "expect non null");
+  assert(dest && "expect non null");
+  build(b, result, {}, {img, dest}, attrs);
+}
+
+static void print(OpAsmPrinter &p, Im2ColOp op) {
+  p << op.getOperationName() << " " << op.img() << " " << op.dest() << " "
+    << op.block();
+  p << " : " << op.img().getType() << " into " << op.dest().getType();
+}
+
+static ParseResult parseIm2ColOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType img, dest;
+  SmallVector<Type, 2> types;
+
+  if (parser.parseOperand(img) || parser.parseOperand(dest) ||
+      parser.parseOptionalAttrDict(result.attributes) || 
+      parser.parseColonTypeList(types) ||
+      parser.resolveOperand(img, types[0], result.operands) ||
+      parser.resolveOperand(dest, types[1], result.operands) /*||
+      parser.addTypeToList(types[1], result.types)*/)
+    return failure();
+
+  return success();
+}
+
+static LogicalResult verify(Im2ColOp op) { return success(); }
 
 //===----------------------------------------------------------------------===//
 // YieldOp

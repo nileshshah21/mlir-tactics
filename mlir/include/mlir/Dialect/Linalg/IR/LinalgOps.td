@@ -343,4 +343,27 @@ def Linalg_YieldOp : Linalg_Op<"yield", [NoSideEffect, Terminator]>,
   }];
 }
 
+def Linalg_Im2ColOp : Linalg_Op<"imtocol", [NoSideEffect]>,
+  Arguments<(ins AnyStridedMemRef:$img, AnyStridedMemRef: $dest,
+             OptionalAttr<I64ArrayAttr>:$block)> {
+  
+  let summary = "`imtocol` produces a new strided memref"; 
+  
+  let description = [{`linalg.im2col`}];
+
+  let builders = [OpBuilder<
+    "OpBuilder &b, OperationState &result, "
+    "Value img, Value dest, ArrayRef<NamedAttribute> attrs = {}">];
+  
+  let extraClassDeclaration = [{
+    int64_t getBlockDimAtPos(unsigned i) {
+      if (!block().hasValue()) 
+        return 1;
+      return block()->getValue()[i].  
+        cast<IntegerAttr>().getValue().getSExtValue();
+    } 
+  }];
+}
+ 
+
 #endif // LINALG_OPS
