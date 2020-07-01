@@ -167,6 +167,19 @@ StringRef ConvBlasEntry::getOutputs() const {
   return res[0];
 }
 
+// TODO: remove duplicate code.
+StringRef ConvBlasEntry::getPadding() const {
+  auto record = record_->getValueAsDef("padding");
+  auto res = record->getValueAsString("stringExpr");
+  return res;
+}
+
+StringRef ConvBlasEntry::getStride() const {
+  auto record = record_->getValueAsDef("stride");
+  auto res = record->getValueAsString("stringExpr");
+  return res;
+}
+
 bool isConstantOne(const std::string &s) {
   if (s.empty())
     return false;
@@ -266,6 +279,18 @@ void BuilderEmitter::emitConvolution(bool isEmitted, std::string destBuff) {
   assert((isEmitted == false) &&
          "convolution must not emit a new buffer - in-place computation");
   auto convEntry = ConvBlasEntry(record_);
+  auto inputs = lookUpOperands(convEntry.getInputs());
+  auto output = destBuff;
+  auto padding = convEntry.getPadding();
+  auto stride = convEntry.getStride();
+  if (clEmitBlasCpu) {
+    os << formatv(
+        R"(
+    auto module = op.getParentOfType<mlir::ModuleOp>();
+    createCallToMklConvolution(module, rewriter, op.getLoc(), {0}, {1}, {2}, {3}, {4});
+    )",
+        inputs[0], inputs[1], output, padding, stride);
+  }
 }
 
 void BuilderEmitter::emitMatvecBlas(MatvecTy &mvi) {

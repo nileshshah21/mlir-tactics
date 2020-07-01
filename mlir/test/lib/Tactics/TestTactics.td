@@ -59,7 +59,7 @@ class Builder<string n = "", code b = ""> {
   Outputs outputs = ?;
 }
 
-class convBuilder<Inputs ins, Outputs outs> : Builder {
+class convBuilder<Inputs ins, Outputs outs, StrExpr pad, StrExpr str> : Builder {
   // name.
   let name = "conv";
   // body.
@@ -68,6 +68,10 @@ class convBuilder<Inputs ins, Outputs outs> : Builder {
   let inputs = ins;
   // output params.
   let outputs = outs;
+  // padding.
+  StrExpr padding = pad;
+  // stride.
+  StrExpr stride = str;
 }
 
 class matmulBuilder<StrExpr transa, StrExpr transb, 
@@ -280,7 +284,7 @@ def MatVecWithConstantStrExprpose : Tactics<"x(i) += alpha * A(j,i) * y(j)", [
 ]>;
 
 def Conv : Tactics<"out(out_h, out_w) += filt(k_h, k_w) * image(out_h + k_h, out_w + k_w)", [
-  convBuilder<Inputs<["filt", "image"]>, Outputs<["out"]>>,
+  convBuilder<Inputs<["filt", "image"]>, Outputs<["out"]>, StrExpr<"{1, 1, 1, 1}">, StrExpr<"{0, 0}">>,
   eraseOpBuilder
 ]>;
 

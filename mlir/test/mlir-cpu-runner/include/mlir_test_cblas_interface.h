@@ -110,12 +110,11 @@ _mlir_ciface_matmul_800x900x1100(int transA, int transB,
 
 extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_matmul_1000x1100x1200(int transA, int transB,
-                                 StridedMemRefType<float, 2> *C,
-                                 StridedMemRefType<float, 2> *A,
-                                 StridedMemRefType<float, 2> *B, int64_t alpha,
-                                 int64_t beta, int64_t dimForM, int64_t dimForN,
-                                 int64_t dimForK);
-
+                                   StridedMemRefType<float, 2> *C,
+                                   StridedMemRefType<float, 2> *A,
+                                   StridedMemRefType<float, 2> *B,
+                                   int64_t alpha, int64_t beta, int64_t dimForM,
+                                   int64_t dimForN, int64_t dimForK);
 
 extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_matmul_900x1100x1200(int transA, int transB,
@@ -205,6 +204,12 @@ extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
                                       StridedMemRefType<float, 3> *D, int *perm,
                                       int s);
+
+extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
+_mlir_ciface_conv(StridedMemRefType<float, 2> *I,
+                  StridedMemRefType<float, 2> *F,
+                  StridedMemRefType<float, 2> *D, int *padding, int paddingSize,
+                  int *stride, int strideSize);
 
 extern "C" MLIR_TEST_CBLAS_INTERFACE_EXPORT void
 _mlir_ciface_reshape_2x12_to_2x3x4(StridedMemRefType<float, 2> *S,
