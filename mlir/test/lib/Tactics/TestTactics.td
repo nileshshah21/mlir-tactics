@@ -2,8 +2,8 @@
 #define TEST_TACTICS
 
 // describe an affine expression.
-class AffineExpression<string map> {
-  string affineExpr = map;
+class StrExpr<string str> {
+  string stringExpr = str;
 }
 
 // describe a list of inputs.
@@ -14,13 +14,6 @@ class Inputs<list<string> ins> {
 // describe a list of outputs.
 class Outputs<list<string> outs> {
   list<string> outputs = outs;
-}
-
-// describe transpose values.
-// `N` non-transpose
-// `T` transpose
-class Trans<string value> {
-  string trans = value;
 }
 
 // describe how many tensor dimensions
@@ -66,7 +59,6 @@ class Builder<string n = "", code b = ""> {
   Outputs outputs = ?;
 }
 
-// TODO: Add padding and stride
 class convBuilder<Inputs ins, Outputs outs> : Builder {
   // name.
   let name = "conv";
@@ -78,7 +70,7 @@ class convBuilder<Inputs ins, Outputs outs> : Builder {
   let outputs = outs;
 }
 
-class matmulBuilder<Trans transa, Trans transb, 
+class matmulBuilder<StrExpr transa, StrExpr transb, 
                     M mVal, N nVal, K kVal,
                     Constant constantAlpha, Constant constantBeta,
                     Inputs ins, Outputs outs> : Builder { 
@@ -87,9 +79,9 @@ class matmulBuilder<Trans transa, Trans transb,
   // body.  
   let body = [{}];
   // is A transpose ?
-  Trans transA = transa;
+  StrExpr transA = transa;
   // is B transpose ?
-  Trans transB = transb;
+  StrExpr transB = transb;
   // how many dimensions for M-N-K?
   M m = mVal;
   N n = nVal;
@@ -104,14 +96,14 @@ class matmulBuilder<Trans transa, Trans transb,
   let outputs = outs;
 }
 
-class matvecBuilder<Trans transa, Inputs ins, Outputs outs, 
+class matvecBuilder<StrExpr transa, Inputs ins, Outputs outs, 
                     Constant constantAlpha, Constant constantBeta> : Builder {
   // name.
   let name = "matvec";
   //body.
   let body = [{}];
   // is A transpose ?
-  Trans transA = transa;
+  StrExpr transA = transa;
   // alpha. 
   Constant alpha = constantAlpha;
   // beta.
@@ -122,7 +114,7 @@ class matvecBuilder<Trans transa, Inputs ins, Outputs outs,
   let outputs = outs;
 }
 
-class transposeBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Builder {
+class transposeBuilder<Inputs ins, Outputs outs, StrExpr expr> : Builder {
   // name.
   let name = "transpose";
   // body.
@@ -132,10 +124,10 @@ class transposeBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Builde
   // output params.
   let outputs = outs;
   // affine expr.  
-  AffineExpression affineExpr = expr;
+  StrExpr affineExpr = expr;
 }
 
-class reshapeBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Builder {
+class reshapeBuilder<Inputs ins, Outputs outs, StrExpr expr> : Builder {
   // name.
   let name = "reshape";
   // body 
@@ -145,7 +137,7 @@ class reshapeBuilder<Inputs ins, Outputs outs, AffineExpression expr> : Builder 
   // output params.
   let outputs = outs;
   // affine expr.
-  AffineExpression affineExpr = expr;
+  StrExpr affineExpr = expr;
 }
 
 def eraseOpBuilder : Builder { 
@@ -166,8 +158,8 @@ def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
   eraseOpBuilder
 ]>;
 
-def testTransposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
-  matmulBuilder<Trans<"T">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">, 
+def testStrExprposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,j)", [
+  matmulBuilder<StrExpr<"T">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">, 
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
@@ -175,115 +167,115 @@ def testTransposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(k,
 // experiments as described in Gareev et al.
 // tensor ab-ac-cb sizes 1024x1024 - 1024x1024 - 1024x1024
 def TENSORabaccb : Tactics<"C(a,b) += A(a,c) * B(c,b)", [
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
 def TENSORabaccbWithConstant : Tactics<"C(i,j) += alpha * A(i,k) * B(k,j)", [
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"alpha">, Constant<"1">,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"alpha">, Constant<"1">,
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
 // tensor ab-acd-dbc sizes 1024x1024 - 1024x32×32 - 32x1024×32
 def TENSORabacddbc : Tactics<"C(a, b) += A(a, c, d) * B(d, b, c)", [
-  transposeBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
-  reshapeBuilder<Inputs<["A"]>, Outputs<["E"]>, AffineExpression<"{0, {1, 2}}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, 2}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  transposeBuilder<Inputs<["B"]>, Outputs<["D"]>, StrExpr<"{2, 0, 1}">>,
+  reshapeBuilder<Inputs<["A"]>, Outputs<["E"]>, StrExpr<"{0, {1, 2}}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, StrExpr<"{{0, 1}, 2}">>,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["E", "F"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
 // tensor abc-acd-db sizes 32×1024×32 - 32×32×1024 - 1024×1024
 def TENSORabcacddb : Tactics<"C(a, b, c) += A(a, c, d) * B(d, b)", [
-  transposeBuilder<Inputs<["C"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["A"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, 2}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  transposeBuilder<Inputs<["C"]>, Outputs<["D"]>, StrExpr<"{0, 2, 1}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, StrExpr<"{{0, 1}, 2}">>,
+  reshapeBuilder<Inputs<["A"]>, Outputs<["F"]>, StrExpr<"{{0, 1}, 2}">>,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["F", "B"]>, Outputs<["E"]>>, 
-  reshapeBuilder<Inputs<["E"]>, Outputs<["D"]>, AffineExpression<"{{0, 1}, 2}">>,
-  transposeBuilder<Inputs<["D"]>, Outputs<["C"]>, AffineExpression<"{0, 2, 1}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["D"]>, StrExpr<"{{0, 1}, 2}">>,
+  transposeBuilder<Inputs<["D"]>, Outputs<["C"]>, StrExpr<"{0, 2, 1}">>,
   eraseOpBuilder
 ]>;
 
 // tensor abc-ad-bdc sizes 1024×32×32 - 1024×1024- 32×1024×32
 def TENSORabcadbdc : Tactics<"C(a, b, c) += A(a, d) * B(b, d, c)", [
-  transposeBuilder<Inputs<["B"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, AffineExpression<"{0, {1, 2}}">>,
-  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{0, {1, 2}}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  transposeBuilder<Inputs<["B"]>, Outputs<["D"]>, StrExpr<"{1, 0, 2}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["E"]>, StrExpr<"{0, {1, 2}}">>,
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, StrExpr<"{0, {1, 2}}">>,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["A", "E"]>, Outputs<["F"]>>,
-  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"{0, {1, 2}}">>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, StrExpr<"{0, {1, 2}}">>,
   eraseOpBuilder
 ]>;
 
 // tensor ab-cad-dcb 1024×1024 - 32×1024×32 - 32×32×1024
 def TENSORabcaddcb : Tactics<"C(a, b) += A(c, a, d) * B(d, c, b)", [
-  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{1, 0, 2}">>,
-  transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{1, 0, 2}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{0, {1, 2}}">>,
-  reshapeBuilder<Inputs<["E"]>, Outputs<["H"]>, AffineExpression<"{{0, 1}, 2}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, StrExpr<"{1, 0, 2}">>,
+  transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, StrExpr<"{1, 0, 2}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, StrExpr<"{0, {1, 2}}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["H"]>, StrExpr<"{{0, 1}, 2}">>,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["F", "H"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
 
 // tensor abc-bda-dc 32×32×1024 - 32×1024×32 - 1024×1024
 def TENSORabcdbadc : Tactics<"C(a, b, c) += A(b, d, a) * B(d, c)", [
-  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{2, 0, 1}">>,
-  reshapeBuilder<Inputs<["C"]>, Outputs<["E"]>, AffineExpression<"{{0, 1}, 2}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, 2}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, StrExpr<"{2, 0, 1}">>,
+  reshapeBuilder<Inputs<["C"]>, Outputs<["E"]>, StrExpr<"{{0, 1}, 2}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["F"]>, StrExpr<"{{0, 1}, 2}">>,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["F", "B"]>, Outputs<["E"]>>,
-  reshapeBuilder<Inputs<["E"]>, Outputs<["C"]>, AffineExpression<"{{0, 1}, 2}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["C"]>, StrExpr<"{{0, 1}, 2}">>,
   eraseOpBuilder
 ]>;
 
 // tensor abcd-aebf-dfce 32×32×32x32 - 32×32×32x32 - 32×32x32x32
 def TENSORabcdaebfdfce : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(d, f, c, e)", [
-  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1, 3}">>,
-  transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{3, 1, 2, 0}">>,
-  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
-  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, StrExpr<"{0, 2, 1, 3}">>,
+  transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, StrExpr<"{3, 1, 2, 0}">>,
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["H", "L"]>, Outputs<["F"]>>,
-  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
   eraseOpBuilder
 ]>;
 
 
 def TENSORabcdaebffdec : Tactics<"C(a, b, c, d) += A(a, e, b, f) * B(f, d, e, c)", [
-  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, AffineExpression<"{0, 2, 1, 3}">>,
-  transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, AffineExpression<"{2, 0, 3, 1}">>,
-  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
-  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
-  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
-  matmulBuilder<Trans<"N">, Trans<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
+  transposeBuilder<Inputs<["A"]>, Outputs<["D"]>, StrExpr<"{0, 2, 1, 3}">>,
+  transposeBuilder<Inputs<["B"]>, Outputs<["E"]>, StrExpr<"{2, 0, 3, 1}">>,
+  reshapeBuilder<Inputs<["C"]>, Outputs<["F"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["D"]>, Outputs<["H"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["E"]>, Outputs<["L"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
+  matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["H", "L"]>, Outputs<["F"]>>,
-  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, AffineExpression<"{{0, 1}, {2, 3}}">>,
+  reshapeBuilder<Inputs<["F"]>, Outputs<["C"]>, StrExpr<"{{0, 1}, {2, 3}}">>,
   eraseOpBuilder
 ]>;
 
 def MatVec : Tactics<"x(i) += A(i, j) * y(j)", [
-  matvecBuilder<Trans<"N">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
+  matvecBuilder<StrExpr<"N">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
   eraseOpBuilder
 ]>;
 
-def MatVecTrans : Tactics<"x(i) += A(j, i) * y(j)", [
-  matvecBuilder<Trans<"T">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
+def MatVecStrExpr : Tactics<"x(i) += A(j, i) * y(j)", [
+  matvecBuilder<StrExpr<"T">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"1">, Constant<"1">>,
   eraseOpBuilder
 ]>;
 
 def MatVecWithConstant : Tactics<"x(i) += alpha * A(i,j) * y(j)", [
-  matvecBuilder<Trans<"N">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"alpha">, Constant<"1">>,
+  matvecBuilder<StrExpr<"N">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"alpha">, Constant<"1">>,
   eraseOpBuilder
 ]>;
 
-def MatVecWithConstantTranspose : Tactics<"x(i) += alpha * A(j,i) * y(j)", [
-  matvecBuilder<Trans<"T">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"alpha">, Constant<"1">>, 
+def MatVecWithConstantStrExprpose : Tactics<"x(i) += alpha * A(j,i) * y(j)", [
+  matvecBuilder<StrExpr<"T">, Inputs<["A", "y"]>, Outputs<["x"]>, Constant<"alpha">, Constant<"1">>, 
   eraseOpBuilder
 ]>;
 
