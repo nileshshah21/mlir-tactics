@@ -877,7 +877,8 @@ void mlir::linalg::Im2ColOp::build(OpBuilder &b, OperationState &result,
 
 static void print(OpAsmPrinter &p, Im2ColOp op) {
   p << op.getOperationName() << " " << op.img() << " " << op.dest() << " "
-    << op.block();
+    << "b = " << op.block() << " s = " << op.stride()
+    << " p = " << op.padding();
   p << " : " << op.img().getType() << " into " << op.dest().getType();
 }
 
@@ -886,10 +887,10 @@ static ParseResult parseIm2ColOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<Type, 2> types;
 
   if (parser.parseOperand(img) || parser.parseOperand(dest) ||
-      parser.parseOptionalAttrDict(result.attributes) || 
+      parser.parseOptionalAttrDict(result.attributes) ||   
       parser.parseColonTypeList(types) ||
       parser.resolveOperand(img, types[0], result.operands) ||
-      parser.resolveOperand(dest, types[1], result.operands) /*||
+      parser.resolveOperand(dest, types[1], result.operands)/* ||
       parser.addTypeToList(types[1], result.types)*/)
     return failure();
 
