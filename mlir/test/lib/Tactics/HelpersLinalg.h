@@ -10,9 +10,9 @@
 namespace {
 
 template <typename Op, typename TypeAlpha, typename TypeBeta>
-void createLinalgOp(mlir::OpBuilder &builder, mlir::Location &loc,
-                    TypeBeta beta, TypeAlpha alpha, mlir::Value opOne,
-                    mlir::Value opTwo, mlir::Value opThree) {
+static void createLinalgOp(mlir::OpBuilder &builder, mlir::Location &loc,
+                           TypeBeta beta, TypeAlpha alpha, mlir::Value opOne,
+                           mlir::Value opTwo, mlir::Value opThree) {
   static_assert(((std::is_same<TypeBeta, mlir::Value>::value) ||
                  (std::is_same<TypeBeta, int>::value)),
                 "expect mlir::Value or int");
@@ -46,22 +46,22 @@ void createLinalgOp(mlir::OpBuilder &builder, mlir::Location &loc,
 }
 
 template <typename TypeAlpha, typename TypeBeta>
-void createLinalgMatvecOp(mlir::OpBuilder &builder, mlir::Location loc,
-                          TypeBeta beta, TypeAlpha alpha, mlir::Value A,
-                          mlir::Value y, mlir::Value x) {
+static void createLinalgMatvecOp(mlir::OpBuilder &builder, mlir::Location loc,
+                                 TypeBeta beta, TypeAlpha alpha, mlir::Value A,
+                                 mlir::Value y, mlir::Value x) {
   return createLinalgOp<mlir::linalg::MatvecOp>(builder, loc, beta, alpha, A, y,
                                                 x);
 }
 
 template <typename TypeAlpha, typename TypeBeta>
-void createLinalgMatmulOp(mlir::OpBuilder &builder, mlir::Location loc,
-                          TypeBeta beta, TypeAlpha alpha, mlir::Value C,
-                          mlir::Value A, mlir::Value B) {
+static void createLinalgMatmulOp(mlir::OpBuilder &builder, mlir::Location loc,
+                                 TypeBeta beta, TypeAlpha alpha, mlir::Value C,
+                                 mlir::Value A, mlir::Value B) {
   return createLinalgOp<mlir::linalg::MatmulOp>(builder, loc, beta, alpha, A, B,
                                                 C);
 }
 
-mlir::Value
+static mlir::Value
 createLinalgReshapeOp(mlir::OpBuilder &builder, mlir::Location loc,
                       mlir::Value input,
                       llvm::ArrayRef<llvm::ArrayRef<int64_t>> reshapeMap,
