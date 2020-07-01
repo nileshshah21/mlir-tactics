@@ -343,9 +343,12 @@ def Linalg_YieldOp : Linalg_Op<"yield", [NoSideEffect, Terminator]>,
   }];
 }
 
-def Linalg_Im2ColOp : Linalg_Op<"imtocol", [NoSideEffect]>,
+def Linalg_Im2ColOp : Linalg_Op<"imtocol">,
   Arguments<(ins AnyStridedMemRef:$img, AnyStridedMemRef: $dest,
-             OptionalAttr<I64ArrayAttr>:$block)> {
+             OptionalAttr<I64ArrayAttr>:$block,
+             OptionalAttr<I64ArrayAttr>:$stride,
+             OptionalAttr<I64ArrayAttr>:$padding)>/*,
+  Results<(outs AnyStridedMemRef)>*/ {
   
   let summary = "`imtocol` produces a new strided memref"; 
   
@@ -359,8 +362,48 @@ def Linalg_Im2ColOp : Linalg_Op<"imtocol", [NoSideEffect]>,
     int64_t getBlockDimAtPos(unsigned i) {
       if (!block().hasValue()) 
         return 1;
+      assert(block()->size() >= 2);
+      // if we don't have the channel 
+      // return 1.
+      if (block()->size() == 2 && i == 2)
+        return 1;
       return block()->getValue()[i].  
         cast<IntegerAttr>().getValue().getSExtValue();
+    }
+    int64_t getBlockChannel() {
+      return getBlockDimAtPos(2);
+    }
+    int64_t getBlockHeight() {
+      return getBlockDimAtPos(0);
+    }
+    int64_t getBlockWidth() {
+      return getBlockDimAtPos(1);
+    }
+    int64_t getPaddingImpl(unsigned i) {
+      if (!padding().hasValue())
+        return 0;
+      assert(padding()->size() == 2);
+      return padding()->getValue()[i].
+        cast<IntegerAttr>().getValue().getSExtValue();
+    }
+    int64_t getPaddingHeight() {
+      return getPaddingImpl(0);
+    }
+    int64_t getPaddingWidth() {
+      return getPaddingImpl(1); 
+    }
+    int64_t getStrideImpl(unsigned i) {
+      if (!stride().hasValue())
+        return 1;
+      assert(stride()->size() == 2);
+      return stride()->getValue()[i].
+        cast<IntegerAttr>().getValue().getSExtValue();
+    }
+    int64_t getStrideHeight() {
+      return getStrideImpl(0);
+    }
+    int64_t getStrideWidth() {
+      return getStrideImpl(1);
     } 
   }];
 }
