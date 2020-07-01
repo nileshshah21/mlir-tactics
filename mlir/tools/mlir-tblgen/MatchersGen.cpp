@@ -675,7 +675,7 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t) {
   case '+':
     return emitBinaryOperationMatcher(t, "mlir::AddFOp");
   case '/':
-    return emitBinaryOperationMatcher(t, "mlir::SubFOp");
+    return emitBinaryOperationMatcher(t, "mlir::DivFOp");
   case TK_NUMBER:
   case TK_CONST:
     return emitConstantOperationMatcher(Const(t));
