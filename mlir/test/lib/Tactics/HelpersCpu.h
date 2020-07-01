@@ -14,6 +14,7 @@ enum class FUNCTION {
   RESHAPE,
   TRANSPOSE,
   MATVEC,
+  CONV,
 };
 
 std::string composeFunctionNameForTranspose(llvm::ArrayRef<mlir::Type> types) {
@@ -263,6 +264,11 @@ std::string composeFunctionNameForMatvec(llvm::ArrayRef<mlir::Type> types) {
   return result;
 }
 
+// TODO: compose function name.
+std::string composeFunctionNameForConv(llvm::ArrayRef<mlir::Type> types) {
+  return "conv";
+}
+
 template <typename... Args>
 std::string composeFunctionCallName(FUNCTION id, const Args... args) {
   llvm::ArrayRef<mlir::Type> types = {args...};
@@ -275,26 +281,27 @@ std::string composeFunctionCallName(FUNCTION id, const Args... args) {
     return composeFunctionNameForTranspose(types);
   case FUNCTION::MATVEC:
     return composeFunctionNameForMatvec(types);
+  case FUNCTION::CONV:
+    return composeFunctionNameForConv(types);
   }
   assert(0 && "case not convered");
   return "nullptr";
 }
 
 // return a constant op. The value of the constant is the size of
-// the permutation array.
-mlir::Value
-getPermutationSizeAsConstantOp(mlir::Location loc, mlir::OpBuilder &builder,
-                               llvm::ArrayRef<int> permutation,
-                               mlir::LLVM::LLVMDialect *llvmDialect) {
+// the array.
+mlir::Value getSizeAsConstantOp(mlir::Location loc, mlir::OpBuilder &builder,
+                                llvm::ArrayRef<int> permutation,
+                                mlir::LLVM::LLVMDialect *llvmDialect) {
   auto llvmInt32Type = mlir::LLVM::LLVMType::getInt32Ty(llvmDialect);
   mlir::Value size = builder.create<mlir::LLVM::ConstantOp>(
       loc, llvmInt32Type, builder.getI32IntegerAttr(permutation.size()));
   return size;
 }
 
-// return a unique name for the permuation array.
-std::string getPermutationArrayName(llvm::ArrayRef<int> perm) {
-  std::string res = "permutation_";
+// return a unique name for the array.
+std::string getArrayName(std::string prefix, llvm::ArrayRef<int> perm) {
+  std::string res = prefix;
   for (size_t i = 0; i < perm.size() - 1; i++)
     res += std::to_string(perm[i]) + "x";
   res += std::to_string(perm[perm.size() - 1]);
@@ -422,9 +429,10 @@ void createCallToMklTranspose(mlir::ModuleOp module,
       FUNCTION::TRANSPOSE,
       llvm::ArrayRef<mlir::Type>{source.getType(), dest.getType()});
   auto *llvmDialect = getLLVMDialect(module);
-  auto global = getOrCreateGlobalArray(
-      loc, rewriter, getPermutationArrayName(perm), perm, module, llvmDialect);
-  auto size = getPermutationSizeAsConstantOp(loc, rewriter, perm, llvmDialect);
+  auto global =
+      getOrCreateGlobalArray(loc, rewriter, getArrayName("permutation_", perm),
+                             perm, module, llvmDialect);
+  auto size = getSizeAsConstantOp(loc, rewriter, perm, llvmDialect);
   auto symbolFn = getOrInsertFunction(
       rewriter, module, fn,
       llvm::ArrayRef<mlir::Type>{source.getType(), dest.getType(),
@@ -432,6 +440,36 @@ void createCallToMklTranspose(mlir::ModuleOp module,
   rewriter.create<mlir::CallOp>(
       loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
       llvm::ArrayRef<mlir::Value>{source, dest, global, size});
+}
+
+void createCallToMklConvolution(mlir::ModuleOp module,
+                                mlir::PatternRewriter &rewriter,
+                                mlir::Location loc, mlir::Value img,
+                                mlir::Value filter, mlir::Value dest,
+                                llvm::ArrayRef<int> padding,
+                                llvm::ArrayRef<int> stride) {
+  auto fn = composeFunctionCallName(
+      FUNCTION::CONV,
+      llvm::ArrayRef<mlir::Type>{img.getType(), dest.getType()});
+  auto *llvmDialect = getLLVMDialect(module);
+  auto globalPadding =
+      getOrCreateGlobalArray(loc, rewriter, getArrayName("padding_", padding),
+                             padding, module, llvmDialect);
+  auto sizePadding = getSizeAsConstantOp(loc, rewriter, padding, llvmDialect);
+  auto globalStride =
+      getOrCreateGlobalArray(loc, rewriter, getArrayName("stride_", stride),
+                             stride, module, llvmDialect);
+  auto sizeStride = getSizeAsConstantOp(loc, rewriter, padding, llvmDialect);
+  auto symbolFn =
+      getOrInsertFunction(rewriter, module, fn,
+                          llvm::ArrayRef<mlir::Type>{
+                              img.getType(), filter.getType(), dest.getType(),
+                              globalPadding.getType(), sizePadding.getType(),
+                              globalStride.getType(), sizeStride.getType()});
+  rewriter.create<mlir::CallOp>(
+      loc, symbolFn, llvm::ArrayRef<mlir::Type>{},
+      llvm::ArrayRef<mlir::Value>{img, filter, dest, globalPadding, sizePadding,
+                                  globalStride, sizeStride});
 }
 
 } // end namespace

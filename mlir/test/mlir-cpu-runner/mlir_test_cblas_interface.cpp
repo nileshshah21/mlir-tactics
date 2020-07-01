@@ -13,7 +13,9 @@
 #include "include/mlir_test_cblas_interface.h"
 #include "include/mlir_test_cblas.h"
 #include <assert.h>
+#include <functional>
 #include <iostream>
+#include <numeric>
 #include <string.h>
 #include <vector>
 
@@ -469,6 +471,151 @@ _mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
                                       StridedMemRefType<float, 3> *D, int *perm,
                                       int s) {
   transposeBlas(S, D, perm, s);
+}
+
+inline dnnl::memory::dim product(const dnnl::memory::dims &dims) {
+  return std::accumulate(dims.begin(), dims.end(), (dnnl::memory::dim)1,
+                         std::multiplies<dnnl::memory::dim>());
+}
+
+// Read from handle, write to memory
+static inline void write_to_dnnl_memory(void *handle, dnnl::memory &mem) {
+  dnnl::engine eng = mem.get_engine();
+  size_t bytes = mem.get_desc().get_size();
+  std::cout << "bytes: " << bytes << std::endl;
+  if (eng.get_kind() == dnnl::engine::kind::cpu) {
+    uint8_t *dst = static_cast<uint8_t *>(mem.get_data_handle());
+    for (size_t i = 0; i < bytes; ++i)
+      dst[i] = ((uint8_t *)handle)[i];
+  } else
+    assert(0 && "gpu not supported");
+}
+
+static inline void read_from_dnnl_memory(void *handle, dnnl::memory &mem) {
+  dnnl::engine eng = mem.get_engine();
+  size_t bytes = mem.get_desc().get_size();
+  std::cout << "bytes: " << bytes << std::endl;
+  if (eng.get_kind() == dnnl::engine::kind::cpu) {
+    uint8_t *src = static_cast<uint8_t *>(mem.get_data_handle());
+    for (size_t i = 0; i < bytes; ++i)
+      ((uint8_t *)handle)[i] = src[i];
+  } else
+    assert(0 && "gpu not supported");
+}
+
+// TODO: remove all the assumptions.
+extern "C" void _mlir_ciface_conv(StridedMemRefType<float, 2> *F,
+                                  StridedMemRefType<float, 2> *I,
+                                  StridedMemRefType<float, 2> *D, int *padding,
+                                  int sizePadding, int *stride,
+                                  int sizeStride) {
+#ifdef HAS_CPU_SUPPORT_DNNL
+  auto cpu_engine = engine(engine::kind::cpu, 0);
+  // TODO: read from args.
+
+  // Tensor dimensions.
+  const memory::dim N = 1,                   // batch size
+      IC = 1,                                // input channels
+      IH = 5,                                // input height
+      IW = 5,                                // input width
+      OC = 1,                                // output channels
+      KH = 3,                                // weights height
+      KW = 3,                                // weights width
+      PH_L = 0,                              // height padding: left
+      PH_R = 0,                              // height padding: right
+      PW_L = 0,                              // width padding: left
+      PW_R = 0,                              // width padding: right
+      SH = 1,                                // height-wise stride
+      SW = 1,                                // width-wise stride
+      OH = (IH - KH + PH_L + PH_R) / SH + 1, // output height
+      OW = (IW - KW + PW_L + PW_R) / SW + 1; // output width
+
+  // Source (src), weights, bias, and destination (dst) tensors
+  // dimensions.
+  memory::dims img_dims = {N, IC, IH, IW};
+  memory::dims filter_dims = {OC, IC, KH, KW};
+  memory::dims out_dims = {N, OC, OH, OW};
+
+  // Strides, padding dimensions.
+  memory::dims strides_dims = {SH, SW};
+  memory::dims padding_dims_l = {PH_L, PW_L};
+  memory::dims padding_dims_r = {PH_R, PW_R};
+
+  using tag = memory::format_tag;
+  using dt = memory::data_type;
+
+  auto img_desc = memory::desc(img_dims, dt::f32, tag::nchw);
+  auto out_desc = memory::desc(out_dims, dt::f32, tag::nchw);
+  auto filter_desc = memory::desc(filter_dims, dt::f32, tag::oihw);
+
+  auto img_memory = memory(img_desc, cpu_engine);
+  auto filter_memory = memory(filter_desc, cpu_engine);
+  auto out_memory = memory(out_desc, cpu_engine);
+
+  std::vector<float> img_data;
+  std::vector<float> filter_data;
+  std::vector<float> out_data;
+
+  for (unsigned i = 0; i < I->sizes[0]; i++)
+    for (unsigned j = 0; j < I->sizes[1]; j++) {
+      float tmp =
+          *(I->data + I->offset + i * I->strides[0] + j * I->strides[1]);
+      img_data.push_back(tmp);
+    }
+
+  for (unsigned i = 0; i < F->sizes[0]; i++)
+    for (unsigned j = 0; j < F->sizes[1]; j++) {
+      float tmp =
+          *(F->data + F->offset + i * F->strides[0] + j * F->strides[1]);
+      filter_data.push_back(tmp);
+    }
+
+  for (unsigned i = 0; i < D->sizes[0]; i++)
+    for (unsigned j = 0; j < D->sizes[1]; j++) {
+      float tmp =
+          *(D->data + D->offset + i * D->strides[0] + j * D->strides[1]);
+      out_data.push_back(tmp);
+    }
+
+  write_to_dnnl_memory(img_data.data(), img_memory);
+  write_to_dnnl_memory(filter_data.data(), filter_memory);
+  write_to_dnnl_memory(out_data.data(), out_memory);
+
+  // Create operation descriptor.
+  auto conv_desc = convolution_forward::desc(
+      prop_kind::forward_training, algorithm::convolution_direct, img_desc,
+      filter_desc, out_desc, strides_dims, padding_dims_l, padding_dims_r);
+
+  // Create primitive descriptor.
+  auto conv_pd = convolution_forward::primitive_desc(conv_desc, cpu_engine);
+  // Create the primitive.
+  auto conv_prim = convolution_forward(conv_pd);
+
+  // Primitive arguments.
+  std::unordered_map<int, memory> conv_args;
+  conv_args.insert({DNNL_ARG_SRC, img_memory});
+  conv_args.insert({DNNL_ARG_WEIGHTS, filter_memory});
+  conv_args.insert({DNNL_ARG_DST, out_memory});
+
+  auto stream_cpu = stream(cpu_engine);
+  // execute
+  conv_prim.execute(stream_cpu, conv_args);
+  stream_cpu.wait();
+
+  // read_from_dnnl_memory(D->data + D->offset, out_memory);
+
+  read_from_dnnl_memory(out_data.data(), out_memory);
+  int indexArray = 0;
+  for (unsigned i = 0; i < D->sizes[0]; i++)
+    for (unsigned j = 0; j < D->sizes[1]; j++) {
+      float tmp = out_data[indexArray++];
+      *(D->data + D->offset + i * D->strides[0] + j * D->strides[1]) = tmp;
+    }
+
+  return;
+#endif
+
+  assert(0 && "naive convolution not implemented yet");
 }
 
 extern "C" void

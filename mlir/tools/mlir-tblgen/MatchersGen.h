@@ -88,6 +88,8 @@ public:
   explicit ConvBlasEntry(llvm::Record *record) : record_(record) {}
   std::vector<llvm::StringRef> getInputs() const;
   llvm::StringRef getOutputs() const;
+  llvm::StringRef getPadding() const;
+  llvm::StringRef getStride() const;
 
 private:
   llvm::Record *record_;
