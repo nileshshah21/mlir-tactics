@@ -34,15 +34,15 @@ void walkTree(const lang::TreeRef &tree,
 class MatmulBlasEntry {
 public:
   explicit MatmulBlasEntry(llvm::Record *record) : record_(record) {}
-  llvm::StringRef alpha() const;
-  llvm::StringRef beta() const;
-  int64_t dimensionForM() const;
-  int64_t dimensionForN() const;
-  int64_t dimensionForK() const;
-  llvm::StringRef transA() const;
-  llvm::StringRef transB() const;
-  std::vector<llvm::StringRef> inputs() const;
-  llvm::StringRef outputs() const;
+  llvm::StringRef getAlpha() const;
+  llvm::StringRef getBeta() const;
+  int64_t getDimensionForM() const;
+  int64_t getDimensionForN() const;
+  int64_t getDimensionForK() const;
+  llvm::StringRef getTransA() const;
+  llvm::StringRef getTransB() const;
+  std::vector<llvm::StringRef> getInputs() const;
+  llvm::StringRef getOutputs() const;
 
 private:
   llvm::Record *record_;
@@ -51,11 +51,11 @@ private:
 class MatvecBlasEntry {
 public:
   explicit MatvecBlasEntry(llvm::Record *record) : record_(record) {}
-  llvm::StringRef transA() const;
-  llvm::StringRef alpha() const;
-  llvm::StringRef beta() const;
-  std::vector<llvm::StringRef> inputs() const;
-  llvm::StringRef outputs() const;
+  llvm::StringRef getTransA() const;
+  llvm::StringRef getAlpha() const;
+  llvm::StringRef getBeta() const;
+  std::vector<llvm::StringRef> getInputs() const;
+  llvm::StringRef getOutputs() const;
 
 private:
   llvm::Record *record_;
@@ -64,9 +64,9 @@ private:
 class ReshapeBlasEntry {
 public:
   explicit ReshapeBlasEntry(llvm::Record *record) : record_(record) {}
-  llvm::StringRef map() const;
-  llvm::StringRef inputs() const;
-  llvm::StringRef outputs() const;
+  llvm::StringRef getMap() const;
+  llvm::StringRef getInputs() const;
+  llvm::StringRef getOutputs() const;
 
 private:
   llvm::Record *record_;
@@ -75,9 +75,9 @@ private:
 class TransposeBlasEntry {
 public:
   explicit TransposeBlasEntry(llvm::Record *record) : record_(record) {}
-  llvm::StringRef permutation() const;
-  llvm::StringRef inputs() const;
-  llvm::StringRef outputs() const;
+  llvm::StringRef getPermutation() const;
+  llvm::StringRef getInputs() const;
+  llvm::StringRef getOutputs() const;
 
 private:
   llvm::Record *record_;
@@ -86,8 +86,8 @@ private:
 class ConvBlasEntry {
 public:
   explicit ConvBlasEntry(llvm::Record *record) : record_(record) {}
-  std::vector<llvm::StringRef> inputs() const;
-  llvm::StringRef outputs() const;
+  std::vector<llvm::StringRef> getInputs() const;
+  llvm::StringRef getOutputs() const;
 
 private:
   llvm::Record *record_;

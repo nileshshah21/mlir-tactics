@@ -36,19 +36,19 @@ BuilderEmitter::BuilderEmitter(Record *record, bool lastBeforeEraseOp,
     : record_(record), lastBeforeEraseOp_(lastBeforeEraseOp), os(os){};
 
 // TODO: make name consistent map and permuation.
-StringRef ReshapeBlasEntry::map() const {
+StringRef ReshapeBlasEntry::getMap() const {
   auto record = record_->getValueAsDef("affineExpr");
   return record->getValueAsString("affineExpr");
 }
 
-StringRef ReshapeBlasEntry::inputs() const {
+StringRef ReshapeBlasEntry::getInputs() const {
   auto record = record_->getValueAsDef("inputs");
   auto res = record->getValueAsListOfStrings("inputs");
   assert(res.size() == 1 && "expect single input for reshape");
   return res[0];
 }
 
-StringRef ReshapeBlasEntry::outputs() const {
+StringRef ReshapeBlasEntry::getOutputs() const {
   auto record = record_->getValueAsDef("outputs");
   auto res = record->getValueAsListOfStrings("outputs");
   assert(res.size() == 1 && "expect single output for reshape");
@@ -56,111 +56,111 @@ StringRef ReshapeBlasEntry::outputs() const {
 }
 
 // TODO: make name consistent affineExpr and permuation.
-StringRef TransposeBlasEntry::permutation() const {
+StringRef TransposeBlasEntry::getPermutation() const {
   auto record = record_->getValueAsDef("affineExpr");
   return record->getValueAsString("affineExpr");
 }
 
-StringRef TransposeBlasEntry::inputs() const {
+StringRef TransposeBlasEntry::getInputs() const {
   auto record = record_->getValueAsDef("inputs");
   auto res = record->getValueAsListOfStrings("inputs");
   assert(res.size() == 1 && "expect single input for transpose");
   return res[0];
 }
 
-StringRef TransposeBlasEntry::outputs() const {
+StringRef TransposeBlasEntry::getOutputs() const {
   auto record = record_->getValueAsDef("outputs");
   auto res = record->getValueAsListOfStrings("outputs");
   assert(res.size() == 1 && "expect single output for transpose");
   return res[0];
 }
 
-StringRef MatvecBlasEntry::alpha() const {
+StringRef MatvecBlasEntry::getAlpha() const {
   auto record = record_->getValueAsDef("alpha");
   return record->getValueAsString("valueConstant");
 }
 
-StringRef MatvecBlasEntry::beta() const {
+StringRef MatvecBlasEntry::getBeta() const {
   auto record = record_->getValueAsDef("beta");
   return record->getValueAsString("valueConstant");
 }
 
-StringRef MatvecBlasEntry::transA() const {
+StringRef MatvecBlasEntry::getTransA() const {
   auto record = record_->getValueAsDef("transA");
   return record->getValueAsString("trans");
 }
 
-std::vector<llvm::StringRef> MatvecBlasEntry::inputs() const {
+std::vector<llvm::StringRef> MatvecBlasEntry::getInputs() const {
   auto record = record_->getValueAsDef("inputs");
   auto res = record->getValueAsListOfStrings("inputs");
   assert(res.size() == 2 && "expect two inputs for matmul");
   return res;
 }
 
-StringRef MatvecBlasEntry::outputs() const {
+StringRef MatvecBlasEntry::getOutputs() const {
   auto record = record_->getValueAsDef("outputs");
   auto res = record->getValueAsListOfStrings("outputs");
   assert(res.size() == 1 && "expect one output for matmul");
   return res[0];
 }
 
-StringRef MatmulBlasEntry::alpha() const {
+StringRef MatmulBlasEntry::getAlpha() const {
   auto record = record_->getValueAsDef("alpha");
   return record->getValueAsString("valueConstant");
 }
 
-StringRef MatmulBlasEntry::beta() const {
+StringRef MatmulBlasEntry::getBeta() const {
   auto record = record_->getValueAsDef("beta");
   return record->getValueAsString("valueConstant");
 }
 
-int64_t MatmulBlasEntry::dimensionForM() const {
+int64_t MatmulBlasEntry::getDimensionForM() const {
   auto record = record_->getValueAsDef("m");
   return record->getValueAsInt("value");
 }
 
-int64_t MatmulBlasEntry::dimensionForN() const {
+int64_t MatmulBlasEntry::getDimensionForN() const {
   auto record = record_->getValueAsDef("n");
   return record->getValueAsInt("value");
 }
 
-int64_t MatmulBlasEntry::dimensionForK() const {
+int64_t MatmulBlasEntry::getDimensionForK() const {
   auto record = record_->getValueAsDef("k");
   return record->getValueAsInt("value");
 }
 
-StringRef MatmulBlasEntry::transA() const {
+StringRef MatmulBlasEntry::getTransA() const {
   auto record = record_->getValueAsDef("transA");
   return record->getValueAsString("trans");
 }
 
-StringRef MatmulBlasEntry::transB() const {
+StringRef MatmulBlasEntry::getTransB() const {
   auto record = record_->getValueAsDef("transB");
   return record->getValueAsString("trans");
 }
 
-std::vector<llvm::StringRef> MatmulBlasEntry::inputs() const {
+std::vector<llvm::StringRef> MatmulBlasEntry::getInputs() const {
   auto record = record_->getValueAsDef("inputs");
   auto res = record->getValueAsListOfStrings("inputs");
   assert(res.size() == 2 && "expect two inputs for matmul");
   return res;
 }
 
-StringRef MatmulBlasEntry::outputs() const {
+StringRef MatmulBlasEntry::getOutputs() const {
   auto record = record_->getValueAsDef("outputs");
   auto res = record->getValueAsListOfStrings("outputs");
   assert(res.size() == 1 && "expect one output for matmul");
   return res[0];
 }
 
-std::vector<llvm::StringRef> ConvBlasEntry::inputs() const {
+std::vector<llvm::StringRef> ConvBlasEntry::getInputs() const {
   auto record = record_->getValueAsDef("inputs");
   auto res = record->getValueAsListOfStrings("inputs");
   assert(res.size() == 2 && "expect two inputs for conv");
   return res;
 }
 
-StringRef ConvBlasEntry::outputs() const {
+StringRef ConvBlasEntry::getOutputs() const {
   auto record = record_->getValueAsDef("outputs");
   auto res = record->getValueAsListOfStrings("outputs");
   assert(res.size() == 1 && "expect one output for conv");
@@ -240,14 +240,14 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
          "matmul must not emit a new buffer - in-place computation");
   auto matmulEntry = MatmulBlasEntry(record_);
   MatmulTy mmi;
-  mmi.alpha = matmulEntry.alpha().str();
-  mmi.beta = matmulEntry.beta().str();
-  mmi.dimForM = matmulEntry.dimensionForM();
-  mmi.dimForN = matmulEntry.dimensionForN();
-  mmi.dimForK = matmulEntry.dimensionForK();
-  mmi.transA = (matmulEntry.transA() == "N") ? false : true;
-  mmi.transB = (matmulEntry.transB() == "N") ? false : true;
-  mmi.inputs = lookUpOperands(matmulEntry.inputs());
+  mmi.alpha = matmulEntry.getAlpha().str();
+  mmi.beta = matmulEntry.getBeta().str();
+  mmi.dimForM = matmulEntry.getDimensionForM();
+  mmi.dimForN = matmulEntry.getDimensionForN();
+  mmi.dimForK = matmulEntry.getDimensionForK();
+  mmi.transA = (matmulEntry.getTransA() == "N") ? false : true;
+  mmi.transB = (matmulEntry.getTransB() == "N") ? false : true;
+  mmi.inputs = lookUpOperands(matmulEntry.getInputs());
   mmi.output = destBuff;
 
   if (clEmitBlasGpu) {
@@ -293,10 +293,10 @@ void BuilderEmitter::emitMatvec(bool isEmitted, std::string destBuff) {
          "matvec must not create a new buffer - in-place operation");
   auto matvecEntry = MatvecBlasEntry(record_);
   MatvecTy mvi;
-  mvi.alpha = matvecEntry.alpha().str();
-  mvi.beta = matvecEntry.beta().str();
-  mvi.transA = (matvecEntry.transA() == "N") ? false : true;
-  mvi.inputs = lookUpOperands(matvecEntry.inputs());
+  mvi.alpha = matvecEntry.getAlpha().str();
+  mvi.beta = matvecEntry.getBeta().str();
+  mvi.transA = (matvecEntry.getTransA() == "N") ? false : true;
+  mvi.inputs = lookUpOperands(matvecEntry.getInputs());
   mvi.output = destBuff;
   if (clEmitBlasCpu)
     emitMatvecBlas(mvi);
@@ -409,9 +409,9 @@ void BuilderEmitter::emitTransposeLinalg(std::string destBuff,
 
 void BuilderEmitter::emitTranspose(bool isEmitted, std::string destBuff) {
   auto transposeBlasEntry = TransposeBlasEntry(record_);
-  auto input = transposeBlasEntry.inputs();
+  auto input = transposeBlasEntry.getInputs();
   auto lookupOperand = lookUpOperand(input);
-  auto permutation = transposeBlasEntry.permutation();
+  auto permutation = transposeBlasEntry.getPermutation();
 
   if (!clEmitBlasCpu)
     emitTransposeLinalg(destBuff, lookupOperand, permutation.str());
@@ -462,9 +462,9 @@ void BuilderEmitter::emitReshapeLinalg(std::string destBuff, std::string input,
 
 void BuilderEmitter::emitReshape(bool isEmitted, std::string destBuff) {
   auto reshapeBlasEntry = ReshapeBlasEntry(record_);
-  auto input = reshapeBlasEntry.inputs();
+  auto input = reshapeBlasEntry.getInputs();
   auto lookupOperand = lookUpOperand(input);
-  auto indexMap = reshapeBlasEntry.map();
+  auto indexMap = reshapeBlasEntry.getMap();
 
   if (!clEmitBlasCpu)
     emitReshapeLinalg(destBuff, lookupOperand, indexMap.str());
@@ -530,22 +530,22 @@ void BuilderEmitter::emit() {
   std::string dest = "unknown";
   bool isEmitted = false;
   if (builderName.equals("matmul")) {
-    emitPreamble(isEmitted, dest, MatmulBlasEntry(record_).outputs());
+    emitPreamble(isEmitted, dest, MatmulBlasEntry(record_).getOutputs());
     emitMatmul(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("matvec")) {
-    emitPreamble(isEmitted, dest, MatvecBlasEntry(record_).outputs());
+    emitPreamble(isEmitted, dest, MatvecBlasEntry(record_).getOutputs());
     emitMatvec(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("transpose")) {
-    emitPreamble(isEmitted, dest, TransposeBlasEntry(record_).outputs());
+    emitPreamble(isEmitted, dest, TransposeBlasEntry(record_).getOutputs());
     emitTranspose(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("reshape")) {
-    emitPreamble(isEmitted, dest, ReshapeBlasEntry(record_).outputs());
+    emitPreamble(isEmitted, dest, ReshapeBlasEntry(record_).getOutputs());
     emitReshape(isEmitted, dest);
     emitPostamble();
   }
