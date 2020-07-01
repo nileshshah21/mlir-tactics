@@ -153,6 +153,20 @@ StringRef MatmulBlasEntry::outputs() const {
   return res[0];
 }
 
+std::vector<llvm::StringRef> ConvBlasEntry::inputs() const {
+  auto record = record_->getValueAsDef("inputs");
+  auto res = record->getValueAsListOfStrings("inputs");
+  assert(res.size() == 2 && "expect two inputs for conv");
+  return res;
+}
+
+StringRef ConvBlasEntry::outputs() const {
+  auto record = record_->getValueAsDef("outputs");
+  auto res = record->getValueAsListOfStrings("outputs");
+  assert(res.size() == 1 && "expect one output for conv");
+  return res[0];
+}
+
 bool isConstantOne(const std::string &s) {
   if (s.empty())
     return false;
