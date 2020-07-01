@@ -2292,8 +2292,9 @@ struct MemRefShapeCastOpLowering
     : public ConvertOpToLLVMPattern<MemRefShapeCastOp> {
   using ConvertOpToLLVMPattern<MemRefShapeCastOp>::ConvertOpToLLVMPattern;
 
-  explicit MemRefShapeCastOpLowering(LLVMTypeConverter &converter)
-      : ConvertOpToLLVMPattern<MemRefShapeCastOp>(converter) {}
+  explicit MemRefShapeCastOpLowering(LLVMTypeConverter &converter,
+                                     const LowerToLLVMOptions &options)
+      : ConvertOpToLLVMPattern<MemRefShapeCastOp>(converter, options) {}
 
   LogicalResult match(Operation *op) const override {
     auto memRefShapeCastOp = cast<MemRefShapeCastOp>(op);
