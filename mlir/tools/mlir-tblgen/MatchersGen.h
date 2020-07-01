@@ -83,6 +83,16 @@ private:
   llvm::Record *record_;
 };
 
+class ConvBlasEntry {
+public:
+  explicit ConvBlasEntry(llvm::Record *record) : record_(record) {}
+  std::vector<llvm::StringRef> inputs() const;
+  llvm::StringRef outputs() const;
+
+private:
+  llvm::Record *record_;
+};
+
 enum class Target { CPU, GPU };
 
 // TODO: Handle coeff. and increment.

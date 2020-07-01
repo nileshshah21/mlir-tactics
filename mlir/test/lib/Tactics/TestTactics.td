@@ -66,6 +66,18 @@ class Builder<string n = "", code b = ""> {
   Outputs outputs = ?;
 }
 
+// TODO: Add padding and stride
+class convBuilder<Inputs ins, Outputs outs> : Builder {
+  // name.
+  let name = "conv";
+  // body.
+  let body = [{}];
+  // input params.
+  let inputs = ins;
+  // output params.
+  let outputs = outs;
+}
+
 class matmulBuilder<Trans transa, Trans transb, 
                     M mVal, N nVal, K kVal,
                     Constant constantAlpha, Constant constantBeta,
@@ -276,6 +288,7 @@ def MatVecWithConstantTranspose : Tactics<"x(i) += alpha * A(j,i) * y(j)", [
 ]>;
 
 def Conv : Tactics<"out(out_h, out_w) += filt(k_h, k_w) * image(out_h + k_h, out_w + k_w)", [
+  convBuilder<Inputs<["filt", "image"]>, Outputs<["out"]>>,
   eraseOpBuilder
 ]>;
 
