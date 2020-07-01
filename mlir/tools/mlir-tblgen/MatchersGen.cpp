@@ -38,7 +38,7 @@ BuilderEmitter::BuilderEmitter(Record *record, bool lastBeforeEraseOp,
 // TODO: make name consistent map and permuation.
 StringRef ReshapeBlasEntry::getMap() const {
   auto record = record_->getValueAsDef("affineExpr");
-  return record->getValueAsString("affineExpr");
+  return record->getValueAsString("stringExpr");
 }
 
 StringRef ReshapeBlasEntry::getInputs() const {
@@ -58,7 +58,7 @@ StringRef ReshapeBlasEntry::getOutputs() const {
 // TODO: make name consistent affineExpr and permuation.
 StringRef TransposeBlasEntry::getPermutation() const {
   auto record = record_->getValueAsDef("affineExpr");
-  return record->getValueAsString("affineExpr");
+  return record->getValueAsString("stringExpr");
 }
 
 StringRef TransposeBlasEntry::getInputs() const {
@@ -87,7 +87,7 @@ StringRef MatvecBlasEntry::getBeta() const {
 
 StringRef MatvecBlasEntry::getTransA() const {
   auto record = record_->getValueAsDef("transA");
-  return record->getValueAsString("trans");
+  return record->getValueAsString("stringExpr");
 }
 
 std::vector<llvm::StringRef> MatvecBlasEntry::getInputs() const {
@@ -131,12 +131,12 @@ int64_t MatmulBlasEntry::getDimensionForK() const {
 
 StringRef MatmulBlasEntry::getTransA() const {
   auto record = record_->getValueAsDef("transA");
-  return record->getValueAsString("trans");
+  return record->getValueAsString("stringExpr");
 }
 
 StringRef MatmulBlasEntry::getTransB() const {
   auto record = record_->getValueAsDef("transB");
-  return record->getValueAsString("trans");
+  return record->getValueAsString("stringExpr");
 }
 
 std::vector<llvm::StringRef> MatmulBlasEntry::getInputs() const {
@@ -259,6 +259,13 @@ void BuilderEmitter::emitMatmul(bool isEmitted, std::string destBuff) {
     return;
   }
   emitMatmulLinalg(mmi);
+}
+
+void BuilderEmitter::emitConvolution(bool isEmitted, std::string destBuff) {
+  // this can be relaxed but we need to emit a new buffer.
+  assert((isEmitted == false) &&
+         "convolution must not emit a new buffer - in-place computation");
+  auto convEntry = ConvBlasEntry(record_);
 }
 
 void BuilderEmitter::emitMatvecBlas(MatvecTy &mvi) {
@@ -547,6 +554,11 @@ void BuilderEmitter::emit() {
   if (builderName.equals("reshape")) {
     emitPreamble(isEmitted, dest, ReshapeBlasEntry(record_).getOutputs());
     emitReshape(isEmitted, dest);
+    emitPostamble();
+  }
+  if (builderName.equals("conv")) {
+    emitPreamble(isEmitted, dest, ConvBlasEntry(record_).getOutputs());
+    emitConvolution(isEmitted, dest);
     emitPostamble();
   }
   if (builderName.equals("erase"))

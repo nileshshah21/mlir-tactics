@@ -216,6 +216,7 @@ struct MatvecTy {
   std::vector<std::string> inputs;
   std::string alpha;
   std::string beta;
+
   bool transA;
 };
 
@@ -277,8 +278,12 @@ private:
 
   // matvec builders/helpers.
   void emitMatvec(bool isEmitted, std::string destBuff);
+  // TODO: extend to GPU target similar to emitMatmulBlas.
   void emitMatvecBlas(MatvecTy &matvecInfo);
   void emitMatvecLinalg(MatvecTy &matvecInfo);
+
+  // convolution builders/helpers.
+  void emitConvolution(bool isEmitted, std::string destBuff);
 
   void emitErase();
 
