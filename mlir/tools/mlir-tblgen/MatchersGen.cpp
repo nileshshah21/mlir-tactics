@@ -653,12 +653,24 @@ collectIteratorsAndTensorNames(const Comprehension &comprehension) {
   return std::make_pair(iterators, tensors);
 }
 
-void TacticsEmitter::emitBinaryOperationMatcher(const TreeRef &t,
-                                                StringRef op) {
+void TacticsEmitter::emitBinaryOperationMatcher(const TreeRef &t, StringRef op,
+                                                const std::vector<bool> &perm,
+                                                unsigned depth) {
+  std::cout << __func__ << "3"
+            << "\n";
+  std::cout << "depth " << depth << "\n";
+  std::cout << "perm[depth] " << perm[depth] << "\n";
+
   os << "m_Op<" << op << ">(";
-  emitArithOperationMatcher(t->trees().at(0));
+  if (perm[depth])
+    emitArithOperationMatcher(t->trees().at(1), perm, depth);
+  else
+    emitArithOperationMatcher(t->trees().at(0), perm, depth);
   os << ", ";
-  emitArithOperationMatcher(t->trees().at(1));
+  if (perm[depth])
+    emitArithOperationMatcher(t->trees().at(0), perm, depth);
+  else
+    emitArithOperationMatcher(t->trees().at(1), perm, depth);
   os << ")";
 }
 
@@ -666,16 +678,23 @@ void TacticsEmitter::emitConstantOperationMatcher(const Const &cst) {
   assert(0 && "not implemented");
 }
 
-void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t) {
+void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t,
+                                               const std::vector<bool> &perm,
+                                               unsigned depth) {
+  std::cout << __func__ << "2"
+            << "\n";
+  std::cout << "depth " << depth << "\n";
+  std::cout << "perm[depth] " << perm[depth] << "\n";
+
   switch (t->kind()) {
   case '*':
-    return emitBinaryOperationMatcher(t, "mlir::MulFOp");
+    return emitBinaryOperationMatcher(t, "mlir::MulFOp", perm, ++depth);
   case '-':
-    return emitBinaryOperationMatcher(t, "mlir::SubFOp");
+    return emitBinaryOperationMatcher(t, "mlir::SubFOp", perm, ++depth);
   case '+':
-    return emitBinaryOperationMatcher(t, "mlir::AddFOp");
+    return emitBinaryOperationMatcher(t, "mlir::AddFOp", perm, ++depth);
   case '/':
-    return emitBinaryOperationMatcher(t, "mlir::DivFOp");
+    return emitBinaryOperationMatcher(t, "mlir::DivFOp", perm, ++depth);
   case TK_NUMBER:
   case TK_CONST:
     return emitConstantOperationMatcher(Const(t));
@@ -699,7 +718,14 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t) {
 }
 
 void TacticsEmitter::emitArithOperationMatcher(
-    const lang::Comprehension &comprehension) {
+    const lang::Comprehension &comprehension, const std::vector<bool> &perm,
+    unsigned depth, int posMatcher) {
+
+  std::cout << __func__ << "1"
+            << "\n";
+  std::cout << "depth " << depth << "\n";
+  std::cout << "perm[depth] " << perm[depth] << "\n";
+
   auto assignment = comprehension.assignment();
   auto rootOperation = assignment;
   switch (assignment->kind()) {
@@ -710,13 +736,19 @@ void TacticsEmitter::emitArithOperationMatcher(
             Tensor::buildTensor(comprehension.ident(), comprehension.indices()),
             lookupName))
       llvm_unreachable("cannot find symbol");
-    os << lookupName << ", ";
-    emitArithOperationMatcher(comprehension.rhs());
+    // reverse.
+    if (perm[depth]) {
+      emitArithOperationMatcher(comprehension.rhs(), perm, depth);
+      os << ", " << lookupName;
+    } else {
+      os << lookupName << ", ";
+      emitArithOperationMatcher(comprehension.rhs(), perm, depth);
+    }
     os << ");";
     break;
   }
   case '=': {
-    emitArithOperationMatcher(comprehension.rhs());
+    emitArithOperationMatcher(comprehension.rhs(), perm, depth);
     os << ";";
     rootOperation = comprehension.rhs();
     break;
@@ -737,14 +769,61 @@ void TacticsEmitter::emitArithOperationMatcher(
     assert(0 && "root operation not supported");
   }
 
-  os << formatv(
-      R"(
+  if (posMatcher == 0) {
+    os << formatv(
+        R"(
         auto rootOp = 
           llvm::dyn_cast_or_null<{0}>(store.getValueToStore().getDefiningOp());
-        if ((!rootOp) || (!bodyMatcher.match(rootOp)))
-          return false;
     )",
-      rootOperationAsString);
+        rootOperationAsString);
+  }
+  os << formatv(R"(
+        if (!rootOp)
+          return false;
+        if (
+    )",
+                posMatcher);
+}
+
+static unsigned countNumberOfBinaryOperationImpl(const TreeRef &t) {
+  if (!t)
+    return 0;
+  unsigned n = 0;
+  if ((t->kind() == '*') || (t->kind() == '+') || (t->kind() == '-') ||
+      (t->kind() == '/'))
+    n++;
+  if ((t->kind() == TK_AND) || (t->kind() == TK_OR))
+    n++;
+  // consider also these binary as we generate
+  // binary operation when we hit them.
+  if ((t->kind() == TK_PLUS_EQ) || (t->kind() == TK_TIMES_EQ))
+    n++;
+  for (auto e : t->trees())
+    n += countNumberOfBinaryOperationImpl(e);
+  return n;
+}
+
+static unsigned
+countNumberOfBinaryOperation(const Comprehension &comprehension) {
+  return countNumberOfBinaryOperationImpl(comprehension.assignment()) +
+         countNumberOfBinaryOperationImpl(comprehension.rhs());
+}
+
+static std::vector<bool> getPermutationVector(unsigned i, size_t expectedSize) {
+  std::vector<bool> res;
+  do {
+    char c = '0' + (i & 1);
+    if (c == '0')
+      res.push_back(false);
+    else
+      res.push_back(true);
+  } while (i >>= 1);
+  std::reverse(res.begin(), res.end());
+
+  while (res.size() != expectedSize)
+    res.insert(res.begin(), false);
+
+  return res;
 }
 
 void TacticsEmitter::emitOperationMatchLogic(
@@ -786,9 +865,21 @@ void TacticsEmitter::emitOperationMatchLogic(
       os << "\n";
     }
   });
-  os.indent(8) << "auto bodyMatcher = ";
-  // emit operation matcher.
-  emitArithOperationMatcher(comprehension);
+
+  // count binary operations in TC.
+  auto numberOfBinaryOperations = countNumberOfBinaryOperation(comprehension);
+  auto numberOfOperandPermutations = std::pow(2, numberOfBinaryOperations);
+  LLVM_DEBUG(dbgs() << "Number of bin ops: " << numberOfBinaryOperations
+                    << "\n");
+  LLVM_DEBUG(dbgs() << "Number Operand permu: " << numberOfOperandPermutations
+                    << "\n");
+
+  for (unsigned i = 0; i < numberOfOperandPermutations; i++) {
+    os.indent(8) << "auto bodyMatcher_" << i << " = ";
+    auto permutationVector = getPermutationVector(i, numberOfBinaryOperations);
+    emitArithOperationMatcher(comprehension, permutationVector, 0, i);
+    os << "\n";
+  }
   os << "\n";
 }
 

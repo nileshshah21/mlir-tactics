@@ -348,11 +348,16 @@ private:
 
   // emit an arithmetic operation. IsRhs is assert if we are dealing with
   // the rhs operand
-  void emitArithOperationMatcher(const lang::Comprehension &comprehension);
-  void emitArithOperationMatcher(const lang::TreeRef &t);
+  void emitArithOperationMatcher(const lang::Comprehension &comprehension,
+                                 const std::vector<bool> &perm, unsigned depth,
+                                 int posMatcher);
+  void emitArithOperationMatcher(const lang::TreeRef &t,
+                                 const std::vector<bool> &perm, unsigned depth);
 
   // emit a binary operation.
-  void emitBinaryOperationMatcher(const lang::TreeRef &t, llvm::StringRef op);
+  void emitBinaryOperationMatcher(const lang::TreeRef &t, llvm::StringRef op,
+                                  const std::vector<bool> &perm,
+                                  unsigned depth);
 
   // emit a constant operation.
   void emitConstantOperationMatcher(const lang::Const &cst);
