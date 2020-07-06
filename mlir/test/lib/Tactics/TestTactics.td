@@ -157,7 +157,7 @@ class Tactics<string p, list<Builder> b = []> {
   string pattern = p;
   list<Builder> builders = b;
 }
-/*
+
 def testBackend : Tactics<"C(i,j) += A(i,k) * B(k,j) * D(i)", [
   eraseOpBuilder
 ]>;
@@ -167,7 +167,7 @@ def testStrExprposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
-*/
+
 // experiments as described in Gareev et al.
 // tensor ab-ac-cb sizes 1024x1024 - 1024x1024 - 1024x1024
 def TENSORabaccb : Tactics<"C(a,b) += A(a,c) * B(c,b)", [
@@ -175,7 +175,7 @@ def TENSORabaccb : Tactics<"C(a,b) += A(a,c) * B(c,b)", [
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
 ]>;
-/*
+
 def TENSORabaccbWithConstant : Tactics<"C(i,j) += alpha * A(i,k) * B(k,j)", [
   matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"alpha">, Constant<"1">,
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
@@ -287,7 +287,7 @@ def Conv : Tactics<"out(out_h, out_w) += filt(k_h, k_w) * image(out_h + k_h, out
   convBuilder<Inputs<["filt", "image"]>, Outputs<["out"]>, StrExpr<"{1, 1, 1, 1}">, StrExpr<"{0, 0}">>,
   eraseOpBuilder
 ]>;
-*/
+
 /*
 TODO: hide eraseOpBuilder.
 */

@@ -877,11 +877,24 @@ void TacticsEmitter::emitOperationMatchLogic(
                     << "\n");
 
   for (unsigned i = 0; i < numberOfOperandPermutations; i++) {
-    os.indent(8) << "auto bodyMatcher_" << i << " = ";
+    os << "\n";
+    os.indent(8) << "{ // Goto can't skip over initializations of variables \n";
+    os.indent(10) << "auto bodyMatcher_" << i << " = ";
     auto permutationVector = getPermutationVector(i, numberOfBinaryOperations);
     emitArithOperationMatcher(comprehension, permutationVector, 0);
+    os << formatv(
+        R"(
+          pctx.reset();
+          if (bodyMatcher_{0}.match(rootOp))
+            goto binding;
+    )",
+        i);
     os << "\n";
+    os.indent(8) << "} \n";
   }
+  // insert a return false which is taken if we did not
+  // have any match.
+  os.indent(8) << "return false;\n";
   os << "\n";
 }
 
@@ -911,7 +924,9 @@ void TacticsEmitter::emitAccessMatchLogic(
   }
   os << "\n";
   emitOperationMatchLogic(comprehension);
+
   // bind captured values.
+  os.indent(8) << "binding: \n";
   for (const auto &iterator : ids.first)
     os.indent(8) << iterator << " = "
                  << "pctx["

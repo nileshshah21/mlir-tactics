@@ -620,10 +620,8 @@ func @bicg(%arg0: memref<2100x1900xf32>,
     affine.store %cst, %arg4[%arg5] : memref<1900xf32>
   }
   // s[j] = s[j] + r[i] * A[i][j]
-  // Here we don't detect as the tactis for gemv
-  // is -> x(i) += A(i, j)T * y(j).
-  // Adding the following tactic will solve
-  // the issue: s(i) += r(j) * A(i, j)
+  // CHECK: %0 = llvm.mlir.constant(1 : i32) : !llvm.i32
+  // CHECK: @matvec_2100x1900x2100(%arg4, %arg0, %arg3, %cst_0, %cst_0, %0)
   affine.for %arg5 = 0 to 2100 {
     affine.for %arg6 = 0 to 1900 {
       %0 = affine.load %arg4[%arg6] : memref<1900xf32>
@@ -635,8 +633,8 @@ func @bicg(%arg0: memref<2100x1900xf32>,
     }
   }
   // q[i] = q[i] + A[i][j] * p[j]
-  // CHECK: %0 = llvm.mlir.constant(0 : i32) : !llvm.i32
-  // CHECK: @matvec_2100x1900x1900(%arg2, %arg0, %arg1, %cst_0, %cst_0, %0)
+  // CHECK: %1 = llvm.mlir.constant(0 : i32) : !llvm.i32
+  // CHECK: @matvec_2100x1900x1900(%arg2, %arg0, %arg1, %cst_0, %cst_0, %1)
   affine.for %arg5 = 0 to 2100 {
     affine.for %arg6 = 0 to 1900 {
       %0 = affine.load %arg2[%arg5] : memref<2100xf32>
