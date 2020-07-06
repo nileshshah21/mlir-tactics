@@ -717,6 +717,34 @@ void TacticsEmitter::emitArithOperationMatcher(const TreeRef &t,
   }
 }
 
+void TacticsEmitter::emitRootMatchingOperation(
+    const lang::Comprehension &comprehension) {
+  auto rootOperation = comprehension.assignment();
+  if (rootOperation->kind() == '=')
+    rootOperation = comprehension.rhs();
+
+  auto rootOperationAsString = "undefined";
+  switch (rootOperation->kind()) {
+  case '*':
+    rootOperationAsString = "mlir::MulFOp";
+    break;
+  case TK_PLUS_EQ:
+    rootOperationAsString = "mlir::AddFOp";
+    break;
+  default:
+    assert(0 && "root operation not supported");
+  }
+  os << formatv(
+      R"(
+        auto rootOp = 
+          llvm::dyn_cast_or_null<{0}>(store.getValueToStore().getDefiningOp());
+        if (!rootOp)
+          return false;
+    )",
+      rootOperationAsString);
+  os << "\n";
+}
+
 void TacticsEmitter::emitArithOperationMatcher(
     const lang::Comprehension &comprehension, const std::vector<bool> &perm,
     unsigned depth, int posMatcher) {
@@ -727,7 +755,6 @@ void TacticsEmitter::emitArithOperationMatcher(
   std::cout << "perm[depth] " << perm[depth] << "\n";
 
   auto assignment = comprehension.assignment();
-  auto rootOperation = assignment;
   switch (assignment->kind()) {
   case TK_PLUS_EQ: {
     os << "m_Op<mlir::AddFOp>(";
@@ -750,39 +777,11 @@ void TacticsEmitter::emitArithOperationMatcher(
   case '=': {
     emitArithOperationMatcher(comprehension.rhs(), perm, depth);
     os << ";";
-    rootOperation = comprehension.rhs();
     break;
   }
   default:
     assert(0 && "assignment not supported");
   }
-
-  auto rootOperationAsString = "undefined";
-  switch (rootOperation->kind()) {
-  case '*':
-    rootOperationAsString = "mlir::MulFOp";
-    break;
-  case TK_PLUS_EQ:
-    rootOperationAsString = "mlir::AddFOp";
-    break;
-  default:
-    assert(0 && "root operation not supported");
-  }
-
-  if (posMatcher == 0) {
-    os << formatv(
-        R"(
-        auto rootOp = 
-          llvm::dyn_cast_or_null<{0}>(store.getValueToStore().getDefiningOp());
-    )",
-        rootOperationAsString);
-  }
-  os << formatv(R"(
-        if (!rootOp)
-          return false;
-        if (
-    )",
-                posMatcher);
 }
 
 static unsigned countNumberOfBinaryOperationImpl(const TreeRef &t) {
@@ -865,6 +864,9 @@ void TacticsEmitter::emitOperationMatchLogic(
       os << "\n";
     }
   });
+
+  // emit the operation root, from where we start matching.
+  emitRootMatchingOperation(comprehension);
 
   // count binary operations in TC.
   auto numberOfBinaryOperations = countNumberOfBinaryOperation(comprehension);

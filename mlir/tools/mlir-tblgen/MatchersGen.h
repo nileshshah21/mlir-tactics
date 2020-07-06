@@ -336,6 +336,9 @@ private:
       const lang::Comprehension &comprehension,
       const std::pair<identifierIterators, identifierTensors> &ids);
 
+  // emit root operation from where we start matching.
+  void emitRootMatchingOperation(const lang::Comprehension &comprehension);
+
   // emit operation logic.
   void emitOperationMatchLogic(const lang::Comprehension &comprehension);
 
