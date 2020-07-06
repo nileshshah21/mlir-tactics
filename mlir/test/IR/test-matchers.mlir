@@ -262,7 +262,7 @@ func @multipleFiring(%A: memref<42x40xf32>, %B: memref<40x41xf32>, %C: memref<42
   return
 }
 
-// CHECK-LABEL: matmul
+// CHECK-LABEL: multipleFiring
 //       CHECK: Pattern add(mul(B(k, j), A(i, k)), C(i, j)) matched 0 times
 //       CHECK: Pattern add(C(i, j), mul(B(j, j), A(i, k))) matched 0 times
 //       CHECK: Pattern add(mul(A(i, k), B(k, j)), C(i, j)) matched 0 times
