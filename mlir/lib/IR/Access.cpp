@@ -37,6 +37,12 @@ void MatchingContext::dump() {
   }
 }
 
+void MatchingContext::reset() {
+  for (auto it = placeholderMap_.begin(), end = placeholderMap_.end();
+       it != end; it++)
+    it->second = nullptr;
+}
+
 LogicalResult MatchingContext::assignToPlaceholder(Value &val,
                                                    size_t placeholderId) {
   auto it = placeholderMap_.find(placeholderId);

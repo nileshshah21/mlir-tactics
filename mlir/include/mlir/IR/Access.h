@@ -58,6 +58,9 @@ public:
   /// dump the current context.
   void dump();
 
+  /// reset the current context.
+  void reset();
+
   /// Get underneath context.
   MLIRContext *getContext() { return ctx_; };
 
@@ -172,7 +175,12 @@ public:
            "Only a single matchingContext is supported");
     m_Placeholder::context() = &matchingContext_;
   }
+
   ~AccessPatternContext() { m_Placeholder::context() = nullptr; }
+
+  void reset() { matchingContext_.reset(); };
+
+  // TODO: make me private.
   details::MatchingContext matchingContext_;
 
   Value operator[](const m_Placeholder &pl) const;

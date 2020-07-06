@@ -447,6 +447,64 @@ void test6(FuncOp f) {
                << countMatches(f, p5) << " times\n";
 }
 
+void test11(FuncOp f) {
+  if (f.getNumArguments() != 3)
+    llvm_unreachable("matcher test func must have 3 args");
+  std::vector<SmallVector<AffineForOp, 4>> bands;
+  getNestedLoops(bands, f);
+  if (bands.size() != 1)
+    llvm_unreachable("expect single loop nest");
+  auto loops = bands[0];
+  if (loops.size() != 3)
+    llvm_unreachable("matcher test func must have 3 loops");
+  auto i = loops[0].getInductionVar();
+  auto j = loops[1].getInductionVar();
+  auto k = loops[2].getInductionVar();
+
+  auto ctx = f.getBody().getContext();
+  using namespace matchers;
+  {
+    AccessPatternContext pctx(ctx);
+    auto _i = m_Placeholder();
+    auto _j = m_Placeholder();
+    auto _k = m_Placeholder();
+    auto _A = m_ArrayPlaceholder();
+    auto _B = m_ArrayPlaceholder();
+    auto _C = m_ArrayPlaceholder();
+    auto a = m_Op<AffineLoadOp>(_A({_i, _k}));
+    auto b = m_Op<AffineLoadOp>(_B({_k, _j}));
+    auto c = m_Op<AffineLoadOp>(_C({_i, _j}));
+    auto p1 = m_Op<AddFOp>(c, m_Op<MulFOp>(a, b));
+    auto p2 = m_Op<AddFOp>(m_Op<MulFOp>(a, b), c);
+    auto p3 = m_Op<AddFOp>(c, m_Op<MulFOp>(b, a));
+    auto p4 = m_Op<AddFOp>(m_Op<MulFOp>(b, a), c);
+    llvm::outs() << "Pattern add(mul(B(k, j), A(i, k)), C(i, j)) matched "
+                 << countMatches(f, p4) << " times\n";
+    pctx.reset();
+    llvm::outs() << "Pattern add(C(i, j), mul(B(j, j), A(i, k))) matched "
+                 << countMatches(f, p3) << " times\n";
+    pctx.reset();
+    llvm::outs() << "Pattern add(mul(A(i, k), B(k, j)), C(i, j)) matched "
+                 << countMatches(f, p2) << " times\n";
+    pctx.reset();
+    llvm::outs() << "Pattern add(C(i, j), mul(A(i, k), B(k, j))) matched "
+                 << countMatches(f, p1) << " times\n";
+    auto matchedI = pctx[_i];
+    auto matchedJ = pctx[_j];
+    auto matchedK = pctx[_k];
+    Value matchedA = nullptr;
+    Value matchedB = nullptr;
+    Value matchedC = nullptr;
+    matchedA = pctx[_A];
+    matchedB = pctx[_B];
+    matchedC = pctx[_C];
+    if ((i != matchedI) || (j != matchedJ) || (k != matchedK))
+      llvm_unreachable("matching failed");
+    if ((!matchedA) || (!matchedB) || (!matchedC))
+      llvm_unreachable("matching failed");
+  }
+}
+
 void TestMatchers::runOnFunction() {
   auto f = getFunction();
   llvm::outs() << f.getName() << "\n";
@@ -470,6 +528,8 @@ void TestMatchers::runOnFunction() {
     test9(f);
   if (f.getName() == "channelConv")
     test10(f);
+  if (f.getName() == "multipleFiring")
+    test11(f);
 }
 
 namespace mlir {

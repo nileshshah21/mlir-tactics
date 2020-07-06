@@ -245,3 +245,26 @@ func @channelConv(%out: memref<3x3xf32>, %filt: memref<1x3x3xf32>, %img: memref<
 
 // CHECK-LABEL: channelConv
 //       CHECK: conv matched 1 times
+
+func @multipleFiring(%A: memref<42x40xf32>, %B: memref<40x41xf32>, %C: memref<42x41xf32>) {
+  affine.for %i = 0 to 42 {
+    affine.for %j = 0 to 41 {
+      affine.for %k = 0 to 40 {
+        %0 = affine.load %A[%i, %k] : memref<42x40xf32>
+        %1 = affine.load %B[%k, %j] : memref<40x41xf32>
+        %2 = affine.load %C[%i, %j] : memref<42x41xf32>
+        %3 = mulf %0, %1 : f32
+        %4 = addf %2, %3 : f32
+        affine.store %4, %C[%i, %j] : memref<42x41xf32>
+      }
+    }
+  }
+  return
+}
+
+// CHECK-LABEL: multipleFiring
+//       CHECK: Pattern add(mul(B(k, j), A(i, k)), C(i, j)) matched 0 times
+//       CHECK: Pattern add(C(i, j), mul(B(j, j), A(i, k))) matched 0 times
+//       CHECK: Pattern add(mul(A(i, k), B(k, j)), C(i, j)) matched 0 times
+//       CHECK: Pattern add(C(i, j), mul(A(i, k), B(k, j))) matched 1 times
+
