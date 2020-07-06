@@ -747,7 +747,7 @@ void TacticsEmitter::emitRootMatchingOperation(
 
 void TacticsEmitter::emitArithOperationMatcher(
     const lang::Comprehension &comprehension, const std::vector<bool> &perm,
-    unsigned depth, int posMatcher) {
+    unsigned depth) {
 
   std::cout << __func__ << "1"
             << "\n";
@@ -879,7 +879,7 @@ void TacticsEmitter::emitOperationMatchLogic(
   for (unsigned i = 0; i < numberOfOperandPermutations; i++) {
     os.indent(8) << "auto bodyMatcher_" << i << " = ";
     auto permutationVector = getPermutationVector(i, numberOfBinaryOperations);
-    emitArithOperationMatcher(comprehension, permutationVector, 0, i);
+    emitArithOperationMatcher(comprehension, permutationVector, 0);
     os << "\n";
   }
   os << "\n";

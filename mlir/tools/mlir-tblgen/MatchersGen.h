@@ -352,8 +352,7 @@ private:
   // emit an arithmetic operation. IsRhs is assert if we are dealing with
   // the rhs operand
   void emitArithOperationMatcher(const lang::Comprehension &comprehension,
-                                 const std::vector<bool> &perm, unsigned depth,
-                                 int posMatcher);
+                                 const std::vector<bool> &perm, unsigned depth);
   void emitArithOperationMatcher(const lang::TreeRef &t,
                                  const std::vector<bool> &perm, unsigned depth);
 
