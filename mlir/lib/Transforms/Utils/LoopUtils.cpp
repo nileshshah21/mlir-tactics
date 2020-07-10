@@ -2360,7 +2360,7 @@ LogicalResult mlir::loopVectorize(AffineForOp forOp, unsigned simdWidth,
   forOp.walk([&](Operation *op) {
     if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op) ||
         isa<AffineApplyOp>(op) || isa<SplatOp>(op) ||
-        isa<AffineTerminatorOp>(op))
+        isa<AffineYieldOp>(op))
       return;
     if (auto *vecOp = vectorizeMiscLeafOp(op, vectorWidth)) {
       op->replaceAllUsesWith(vecOp);

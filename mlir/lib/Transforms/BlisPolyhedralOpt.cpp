@@ -47,7 +47,7 @@ interchangeBands(PatternRewriter &rewriter,
         origLoops[i].getUpperBoundMap(), origLoops[i].getStep());
     loop.getBody()->clear();
     rewriter.setInsertionPointToStart(loop.getBody());
-    rewriter.create<AffineTerminatorOp>(loc);
+    rewriter.create<AffineYieldOp>(loc);
     rewriter.setInsertionPointToStart(loop.getBody());
     auto loopAsOp = loop.getOperation();
     loopAsOp->setAttr(
@@ -149,7 +149,7 @@ tilePerfectlyNestedBands(int step, PatternRewriter &rewriter,
     auto loop = rewriter.create<AffineForOp>(loc, 0, 0);
     loop.getBody()->clear();
     rewriter.setInsertionPointToStart(loop.getBody());
-    rewriter.create<AffineTerminatorOp>(loc);
+    rewriter.create<AffineYieldOp>(loc);
     rewriter.setInsertionPointToStart(loop.getBody());
     auto loopAsOp = loop.getOperation();
     loopAsOp->setAttr(
