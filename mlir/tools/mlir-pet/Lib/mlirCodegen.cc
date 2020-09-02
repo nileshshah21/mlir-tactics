@@ -452,6 +452,12 @@ Value MLIRCodegen::createBinaryOp(Location &loc, Value &lhs, Value &rhs,
     else
       return nullptr;
   }
+  case BinaryOpType::GT: {
+
+    return isLhsFloat ? builder_.create<CmpFOp>(loc, mlir::CmpFPredicate::OGT,
+                                                lhs, rhs)
+                      : nullptr;
+  }
   default:
     llvm_unreachable("operation not supported yet.");
   }
@@ -596,7 +602,18 @@ Value MLIRCodegen::createDefinition(__isl_take pet_expr *expr) {
   pet_expr_free(arg);
   return allocation;
 }
+Value MLIRCodegen::createTernaryOp(Location &loc, Value &cond, Value &lhs,
+                                   Value &rhs) {
+  LLVM_DEBUG(dbgs() << __func__ << "\n");
+  auto typeLhs = lhs.getType();
+  auto typeRhs = rhs.getType();
 
+  if (typeLhs != typeRhs)
+    return nullptr;
+  if (((!isInt(typeRhs)) && (!isFloat(typeRhs))))
+    return nullptr;
+  return builder_.create<SelectOp>(loc, cond, lhs, rhs);
+}
 // TODO: check pet_expr_free, there is a better way of doing it?
 Value MLIRCodegen::createOp(__isl_take pet_expr *expr, Type t) {
   LLVM_DEBUG(dbgs() << __func__ << "\n");
@@ -657,6 +674,18 @@ Value MLIRCodegen::createOp(__isl_take pet_expr *expr, Type t) {
     pet_expr_free(expr);
     return createBinaryOp(location, lhs, rhs, BinaryOpType::DIV);
   }
+  case pet_op_cond: {
+    pet_expr_free(expr);
+    // lhs becomes condition, rhs, rhs2 conditional results
+    Value rhs2 = createExpr(pet_expr_get_arg(expr, 2), t);
+    if (!rhs2) {
+      return nullptr;
+    }
+    return createTernaryOp(location, lhs, rhs, rhs2);
+  }
+  case pet_op_gt:
+    pet_expr_free(expr);
+    return createBinaryOp(location, lhs, rhs, BinaryOpType::GT);
   case pet_op_mod:
   case pet_op_shl:
   case pet_op_shr:
@@ -665,7 +694,6 @@ Value MLIRCodegen::createOp(__isl_take pet_expr *expr, Type t) {
   case pet_op_le:
   case pet_op_ge:
   case pet_op_lt:
-  case pet_op_gt:
   case pet_op_minus:
   case pet_op_pre_inc:
   case pet_op_pre_dec:
@@ -678,7 +706,6 @@ Value MLIRCodegen::createOp(__isl_take pet_expr *expr, Type t) {
   case pet_op_land:
   case pet_op_lor:
   case pet_op_lnot:
-  case pet_op_cond:
   case pet_op_last: {
     llvm_unreachable("operation not handled");
     return nullptr;

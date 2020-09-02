@@ -16,7 +16,7 @@
 
 namespace codegen {
 
-enum class BinaryOpType { ADD, MUL, SUB, DIV };
+enum class BinaryOpType { ADD, MUL, SUB, DIV, GT };
 
 class SymbolTable {
 public:
@@ -194,6 +194,10 @@ private:
   // create a binary operation.
   mlir::Value createBinaryOp(mlir::Location &loc, mlir::Value &lhs,
                              mlir::Value &rhs, BinaryOpType type);
+
+  // create a ternary operation.
+  mlir::Value createTernaryOp(mlir::Location &loc, mlir::Value &cond,
+                              mlir::Value &rhs, mlir::Value &rhs2);
 
   // create a constant operation.
   mlir::Value createConstantOp(__isl_take pet_expr *expr,
