@@ -69,7 +69,7 @@ _mlir_ciface_print_memref_4d_f32(StridedMemRefType<float, 4> *M) {
 
 /// Prints GFLOPS rating.
 extern "C" void print_flops(double flops) {
-  fprintf(stderr, "%lf GFLOPS\n", flops / 1.0E9);
+  fprintf(stdout, "%lf\n", flops / 1.0E9);
 }
 
 extern "C" void print_double(double number) {
