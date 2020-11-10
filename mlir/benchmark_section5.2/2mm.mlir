@@ -1,4 +1,3 @@
-
 func @scop_entry(%arg0: memref<800x1100xf32>, 
                  %arg1: memref<1100x900xf32>, 
                  %arg2: memref<900x1200xf32>, 
@@ -66,14 +65,19 @@ func @main() {
   linalg.fill(%D, %cf2) : memref<800x1200xf32>, f32
   linalg.fill(%C, %cf2) : memref<900x1200xf32>, f32
   
-  call @start_timer() : () -> ()
+  %t_start = call @rtclock() : () -> f64
   call @scop_entry(%A, %B, %C, %D, %cf1, %cf2, %tmp) :
     (memref<800x1100xf32>, memref<1100x900xf32>, 
      memref<900x1200xf32>, memref<800x1200xf32>, f32, f32, memref<800x900xf32>) -> ()
-  call @stop_timer() : () -> ()
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  %num_flops = constant 4104000000 : index
+  %num_flops_i = index_cast %num_flops : index to i64
+  %num_flops_f = sitofp %num_flops_i : i64 to f64
+  %flops = divf %num_flops_f, %t : f64
+  call @print_flops(%flops) : (f64) -> ()
   return 
 }
 
-func @start_timer()
-func @stop_timer() 
-
+func @print_flops(f64)
+func @rtclock() -> f64

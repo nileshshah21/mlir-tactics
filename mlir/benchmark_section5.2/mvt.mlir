@@ -1,7 +1,7 @@
-func @scop_entry(%arg0: memref<2000x2000xf32>, 
-                 %arg1: memref<2000xf32>,   
-                 %arg2: memref<2000xf32>, 
-                 %arg3: memref<2000xf32>, 
+func @scop_entry(%arg0: memref<2000x2000xf32>,
+                 %arg1: memref<2000xf32>,
+                 %arg2: memref<2000xf32>,
+                 %arg3: memref<2000xf32>,
                  %arg4: memref<2000xf32>) {
     affine.for %arg5 = 0 to 2000 {
       affine.for %arg6 = 0 to 2000 {
@@ -32,26 +32,31 @@ func @main() {
   %x2 = alloc() : memref<2000xf32>
   %y2 = alloc() : memref<2000xf32>
   %A = alloc() : memref<2000x2000xf32>
-  
+
   %cf1 = constant 1.00000e+00 : f32
   %cf2 = constant 2.00000e+00 : f32
-  
+
   linalg.fill(%x1, %cf1) : memref<2000xf32>, f32
   linalg.fill(%y1, %cf1) : memref<2000xf32>, f32
   linalg.fill(%y2, %cf2) : memref<2000xf32>, f32
   linalg.fill(%x2, %cf2) : memref<2000xf32>, f32
   linalg.fill(%A, %cf2) : memref<2000x2000xf32>, f32
-  
-  call @start_timer() : () -> ()
-  call @scop_entry(%A, %y1, %y2, %x1, %x2) : 
+
+  %t_start = call @rtclock() : () -> f64
+  call @scop_entry(%A, %y1, %y2, %x1, %x2) :
     (memref<2000x2000xf32>, memref<2000xf32>, memref<2000xf32>,
      memref<2000xf32>, memref<2000xf32>) -> ()
-  call @stop_timer() : () -> ()
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  %num_flops = constant 16000000 : index
+  %num_flops_i = index_cast %num_flops : index to i64
+  %num_flops_f = sitofp %num_flops_i : i64 to f64
+  %flops = divf %num_flops_f, %t : f64
+  call @print_flops(%flops) : (f64) -> ()
   //%py1 = memref_cast %y1 : memref<2000xf32> to memref<*xf32>
   //call @print_memref_f32(%py1) : (memref<*xf32>) -> ()
   return
 }
 
-func @start_timer()
-func @stop_timer() 
-func @print_memref_f32(memref<*xf32>)
+func @print_flops(f64)
+func @rtclock() -> f64

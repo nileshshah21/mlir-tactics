@@ -20,7 +20,7 @@ func @main() {
   %C = alloc() : memref<1024x1024xf32>
   %A = alloc() : memref<1024x32x32xf32>
   %B = alloc() : memref<32x1024x32xf32>
-  
+
   %cf0 = constant 1.00000e+00 : f32
   %cf1 = constant 2.00000e+00 : f32
 
@@ -28,11 +28,9 @@ func @main() {
   linalg.fill(%B, %cf1) : memref<32x1024x32xf32>, f32
   linalg.fill(%C, %cf0) : memref<1024x1024xf32>, f32
 
-  //call @start_timer() : () -> ()
   %t_start = call @rtclock() : () -> (f64)
-  call @contraction.ab.acd.dbc(%C, %A, %B) : 
+  call @contraction.ab.acd.dbc(%C, %A, %B) :
     (memref<1024x1024xf32>, memref<1024x32x32xf32>, memref<32x1024x32xf32>) -> ()
-  //call @stop_timer() : () -> ()
   %t_end = call @rtclock() : () -> (f64)
   %t = subf %t_end, %t_start : f64
   %num_flops = constant 2147483648 : index
@@ -41,12 +39,10 @@ func @main() {
   %flops = divf %num_flops_f, %t : f64
   call @print_flops(%flops) : (f64) -> ()
   %pC = memref_cast %C : memref<1024x1024xf32> to memref<*xf32>
-  //call @print_memref_f32(%pC) : (memref<*xf32>) -> () 
-  return 
+  //call @print_memref_f32(%pC) : (memref<*xf32>) -> ()
+  return
 }
 
 func @rtclock() -> f64
 func @print_flops(f64)
-func @start_timer()
-func @stop_timer()
 func @print_memref_f32(memref<*xf32>)

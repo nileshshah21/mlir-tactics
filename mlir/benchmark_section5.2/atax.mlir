@@ -6,7 +6,7 @@ func @scop_entry(%A: memref<1900x2100xf32>,
     %cst = constant 0.000000e+00 : f32
     affine.store %cst, %tmp[%arg4] : memref<1900xf32>
   }
-  // y[i] = 0  
+  // y[i] = 0
   affine.for %arg4 = 0 to 2100 {
     %cst = constant 0.000000e+00 : f32
     affine.store %cst, %y[%arg4] : memref<2100xf32>
@@ -49,16 +49,21 @@ func @main() {
   linalg.fill(%tmp, %cf1) : memref<1900xf32>, f32
   linalg.fill(%x, %cf2) : memref<2100xf32>, f32
   linalg.fill(%y, %cf2) : memref<2100xf32>, f32
-  
-  call @start_timer() : () -> ()
+
+  %t_start = call @rtclock() : () -> f64
   call @scop_entry(%A, %tmp, %x, %y) :
     (memref<1900x2100xf32>, memref<1900xf32>, memref<2100xf32>, memref<2100xf32>) -> ()
-  call @stop_timer() : () -> ()
-  %pTmp = memref_cast %tmp : memref<1900xf32> to memref<*xf32>
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  %num_flops = constant 15960000 : index
+  %num_flops_i = index_cast %num_flops : index to i64
+  %num_flops_f = sitofp %num_flops_i : i64 to f64
+  %flops = divf %num_flops_f, %t : f64
+  call @print_flops(%flops) : (f64) -> ()
+  //%pTmp = memref_cast %tmp : memref<1900xf32> to memref<*xf32>
   //call @print_memref_f32(%pTmp) : (memref<*xf32>) -> ()
   return
 }
 
-func @start_timer()
-func @stop_timer()
-func @print_memref_f32(memref<*xf32>)
+func @print_flops(f64)
+func @rtclock() -> f64

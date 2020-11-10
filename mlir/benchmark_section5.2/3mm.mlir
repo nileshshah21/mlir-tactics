@@ -1,9 +1,9 @@
-func @scop_entry(%arg0: memref<800x1000xf32>, 
-                 %arg1: memref<1000x900xf32>, 
-                 %arg2: memref<900x1200xf32>, 
-                 %arg3: memref<1200x1100xf32>, 
-                 %arg4: memref<800x900xf32>, 
-                 %arg5: memref<900x1100xf32>, 
+func @scop_entry(%arg0: memref<800x1000xf32>,
+                 %arg1: memref<1000x900xf32>,
+                 %arg2: memref<900x1200xf32>,
+                 %arg3: memref<1200x1100xf32>,
+                 %arg4: memref<800x900xf32>,
+                 %arg5: memref<900x1100xf32>,
                  %arg6: memref<800x1100xf32>) {
     // G[i][j] = 0
     affine.for %arg7 = 0 to 800 {
@@ -33,7 +33,7 @@ func @scop_entry(%arg0: memref<800x1000xf32>,
           %0 = affine.load %arg0[%arg7, %arg9] : memref<800x1000xf32>
           %1 = affine.load %arg1[%arg9, %arg8] : memref<1000x900xf32>
           %2 = affine.load %arg4[%arg7, %arg8] : memref<800x900xf32>
-          %3 = mulf %0, %1 : f32 
+          %3 = mulf %0, %1 : f32
           %4 = addf %2, %3 : f32
           affine.store %4, %arg4[%arg7, %arg8] : memref<800x900xf32>
         }
@@ -59,7 +59,7 @@ func @scop_entry(%arg0: memref<800x1000xf32>,
           %0 = affine.load %arg4[%arg7, %arg9] : memref<800x900xf32>
           %1 = affine.load %arg5[%arg9, %arg8] : memref<900x1100xf32>
           %2 = affine.load %arg6[%arg7, %arg8] : memref<800x1100xf32>
-          %3 = mulf %0, %1 : f32 
+          %3 = mulf %0, %1 : f32
           %4 = addf %2, %3 : f32
           affine.store %4, %arg6[%arg7, %arg8] : memref<800x1100xf32>
         }
@@ -76,7 +76,7 @@ func @main() {
   %C = alloc() : memref<900x1200xf32>
   %D = alloc() : memref<1200x1100xf32>
   %G = alloc() : memref<800x1100xf32>
-  
+
   %cf1 = constant 1.00000e+00 : f32
   %cf2 = constant 2.00000e+00 : f32
 
@@ -88,16 +88,19 @@ func @main() {
   linalg.fill(%D, %cf1) : memref<1200x1100xf32>, f32
   linalg.fill(%G, %cf2) : memref<800x1100xf32>, f32
 
-  call @start_timer() : () -> ()
+  %t_start = call @rtclock() : () -> f64
   call @scop_entry(%A, %B, %C, %D, %E, %F, %G) :
     (memref<800x1000xf32>, memref<1000x900xf32>, memref<900x1200xf32>,
      memref<1200x1100xf32>, memref<800x900xf32>, memref<900x1100xf32>, memref<800x1100xf32>) -> ()
-  call @stop_timer() : () -> ()
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  %num_flops = constant 5400000000 : index
+  %num_flops_i = index_cast %num_flops : index to i64
+  %num_flops_f = sitofp %num_flops_i : i64 to f64
+  %flops = divf %num_flops_f, %t : f64
+  call @print_flops(%flops) : (f64) -> ()
   return
 }
 
-func @start_timer()
-func @stop_timer()
-
-
-
+func @print_flops(f64)
+func @rtclock() -> f64

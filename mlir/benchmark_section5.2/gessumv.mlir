@@ -63,16 +63,21 @@ func @main() {
   linalg.fill(%y, %cf2) : memref<1300xf32>, f32
   linalg.fill(%x, %cf2) : memref<1300xf32>, f32
 
-  call @start_timer() : () -> ()
+  %t_start = call @rtclock() : () -> f64
   call @scop_entry(%A, %B, %cf1, %cf2, %tmp, %x, %y) :
     (memref<1300x1300xf32>, memref<1300x1300xf32>, f32, f32, memref<1300xf32>, memref<1300xf32>,
      memref<1300xf32>) -> ()
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  %num_flops = constant 16000000 : index
+  %num_flops_i = index_cast %num_flops : index to i64
+  %num_flops_f = sitofp %num_flops_i : i64 to f64
+  %flops = divf %num_flops_f, %t : f64
+  call @print_flops(%flops) : (f64) -> ()
   //%ptmp = memref_cast %tmp : memref<1300xf32> to memref<*xf32>
   //call @print_memref_f32(%ptmp) : (memref<*xf32>) -> ()
-  call @stop_timer() : () -> ()
   return
 }
 
-func @start_timer()
-func @stop_timer()
-func @print_memref_f32(memref<*xf32>)  
+func @print_flops(f64)
+func @rtclock() -> f64

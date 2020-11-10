@@ -25,15 +25,20 @@ func @main() {
   linalg.fill(%A, %cf1) : memref<1000x1200xf32>, f32
   linalg.fill(%B, %cf1) : memref<1200x1100xf32>, f32
   linalg.fill(%C, %cf0) : memref<1000x1100xf32>, f32
-  call @start_timer() : () -> ()
+  %t_start = call @rtclock() : () -> f64
   call @contraction.ab.ac.cd(%A, %B, %C) : 
     (memref<1000x1200xf32>, memref<1200x1100xf32>, memref<1000x1100xf32>) -> ()
-  call @stop_timer() : () -> ()
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  %num_flops = constant 2640000000 : index
+  %num_flops_i = index_cast %num_flops : index to i64
+  %num_flops_f = sitofp %num_flops_i : i64 to f64
+  %flops = divf %num_flops_f, %t : f64
+  call @print_flops(%flops) : (f64) -> ()
   %pC = memref_cast %C : memref<1000x1100xf32> to memref<*xf32>
   //call @print_memref_f32(%pC) : (memref<*xf32>) -> ()
   return 
 }
 
-func @start_timer()
-func @stop_timer()
-func @print_memref_f32(memref<*xf32>)
+func @print_flops(f64)
+func @rtclock() -> f64
