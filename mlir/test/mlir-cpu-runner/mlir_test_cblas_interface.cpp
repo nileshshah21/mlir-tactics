@@ -473,6 +473,7 @@ _mlir_ciface_transpose_3x5x4_to_5x3x4(StridedMemRefType<float, 3> *S,
   transposeBlas(S, D, perm, s);
 }
 
+#ifdef HAS_CPU_SUPPORT_DNNL
 inline dnnl::memory::dim product(const dnnl::memory::dims &dims) {
   return std::accumulate(dims.begin(), dims.end(), (dnnl::memory::dim)1,
                          std::multiplies<dnnl::memory::dim>());
@@ -502,6 +503,8 @@ static inline void read_from_dnnl_memory(void *handle, dnnl::memory &mem) {
   } else
     assert(0 && "gpu not supported");
 }
+
+#endif
 
 // TODO: remove all the assumptions.
 extern "C" void _mlir_ciface_conv(StridedMemRefType<float, 2> *F,
