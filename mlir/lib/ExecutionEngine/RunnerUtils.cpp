@@ -72,6 +72,10 @@ extern "C" void print_flops(double flops) {
   fprintf(stderr, "%lf GFLOPS\n", flops / 1.0E9);
 }
 
+extern "C" void print_double(double number) {
+  fprintf(stderr, "%lf NUMBER\n", number);
+}
+
 /// Returns the number of seconds since Epoch 1970-01-01 00:00:00 +0000 (UTC).
 extern "C" double rtclock() {
 #ifndef _WIN32
