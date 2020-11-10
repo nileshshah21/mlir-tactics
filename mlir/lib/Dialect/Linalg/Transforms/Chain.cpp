@@ -122,6 +122,9 @@ static long getCurrentNumberOfScalarMults(SmallVector<Value, 8> values) {
     assert(memRefB && "expect memref type");
     auto shapeA = memRefA.getShape();
     auto shapeB = memRefB.getShape();
+    LLVM_DEBUG(llvm::dbgs() << "res : " << res << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "adding :" << shapeA[0] << " ," << shapeB[0]
+                            << " ," << shapeB[1] << "\n");
     res = res + (shapeA[0] * shapeB[0] * shapeB[1]);
   }
   return res;
@@ -203,7 +206,6 @@ public:
                             << currentNumberScalarsMults << "\n");
     LLVM_DEBUG(printOptimalParens(s, 1, 6));
     LLVM_DEBUG(llvm::dbgs() << "\n\n");
-    LLVM_DEBUG(llvm::dbgs() << "Current Min: " << currentMin << "\n");
 
     if (currentNumberScalarsMults == currentMin) {
       return failure();
@@ -312,7 +314,6 @@ public:
                             << currentNumberScalarsMults << "\n");
     LLVM_DEBUG(printOptimalParens(s, 1, 5));
     LLVM_DEBUG(llvm::dbgs() << "\n\n");
-    LLVM_DEBUG(llvm::dbgs() << "Current Min: " << currentMin << "\n");
 
     if (currentNumberScalarsMults == currentMin) {
       return failure();
@@ -422,7 +423,6 @@ public:
                             << currentNumberScalarsMults << "\n");
     LLVM_DEBUG(printOptimalParens(s, 1, 4));
     LLVM_DEBUG(llvm::dbgs() << "\n\n");
-    LLVM_DEBUG(llvm::dbgs() << "Current Min: " << currentMin << "\n");
 
     if (currentNumberScalarsMults == currentMin) {
       return failure();
