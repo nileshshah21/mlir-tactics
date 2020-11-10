@@ -1,5 +1,5 @@
 # for cudaToolkit
-cmake_minimum_required(VERSION 3.17.0)
+#cmake_minimum_required(VERSION 3.17.0)
 
 set(LLVM_OPTIONAL_SOURCES
   mlir_test_cblas.cpp
@@ -32,22 +32,22 @@ else()
   message(WARNING "MKL not found")
 endif()
 
-find_package(CUDAToolkit)
-if (CUDAToolkit_FOUND) 
-  # Verify that all the CUDA:: targets and variables exist
-  foreach (cuda_lib cudart cuda_driver cublas cufft cufftw curand cusolver cusparse nvgraph)
-    if(NOT CUDA_${cuda_lib}_LIBRARY)
-      message(FATAL_ERROR "expected CUDAToolkit variable CUDA_${cuda_lib}_LIBRARY not found")
-    endif()
-    if(NOT TARGET CUDA::${cuda_lib})
-      message(FATAL_ERROR "expected CUDAToolkit target CUDA::${cuda_lib} not found")
-    endif()
-  endforeach()
-  # include and link
-  include_directories(${CUDAToolkit_INCLUDE_DIRS})
-  target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cublas)
-  target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cudart)
-  # add def
-  add_definitions(-DHAS_GPU_SUPPORT)
-endif()
+#find_package(CUDAToolkit)
+#if (CUDAToolkit_FOUND) 
+#  # Verify that all the CUDA:: targets and variables exist
+#  foreach (cuda_lib cudart cuda_driver cublas cufft cufftw curand cusolver cusparse nvgraph)
+#    if(NOT CUDA_${cuda_lib}_LIBRARY)
+#      message(FATAL_ERROR "expected CUDAToolkit variable CUDA_${cuda_lib}_LIBRARY not found")
+#    endif()
+#    if(NOT TARGET CUDA::${cuda_lib})
+#      message(FATAL_ERROR "expected CUDAToolkit target CUDA::${cuda_lib} not found")
+#    endif()
+#  endforeach()
+#  # include and link
+#  include_directories(${CUDAToolkit_INCLUDE_DIRS})
+#  target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cublas)
+#  target_link_libraries(mlir_test_cblas_interface PRIVATE CUDA::cudart)
+#  # add def
+#  add_definitions(-DHAS_GPU_SUPPORT)
+#endif()
 
