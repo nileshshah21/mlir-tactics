@@ -39,21 +39,21 @@ convenience this is already done.
 vim /llvm-project/mlir/test/lib/Tactics/TestTactics.td 
 ```
 
-At line 173 we can see our GEMM tactics. To see the generated 
+At line 173 we can see our GEMM tactic. To see the generated 
 matchers and builders type:
 
 ``` 
 mlir-tblgen --gen-tactics-linalg TestTactics.td 
 ```
 
-The generated matchers and builders are visibile in class: 
+The generated matchers and builders can be inspected in the struct: 
 
 ```
 struct tactic1 : public mlir::OpRewritePattern<mlir::AffineForOp> { ... }
 
 ```
 
-Note in case you get mlir-tblgen command not found type:
+Note: in case you get ```mlir-tblgen command not found``` type:
 
 ```
 export PATH=/llvm-project-install/bin:$PATH
