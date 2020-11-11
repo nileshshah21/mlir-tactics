@@ -35,7 +35,7 @@ for bm in "${targets[@]}"; do
 done &> results_clang.txt
 
 echo "Running Linalg with tile factor of 32"
-CFLAGS="-test-tactics-linalg -convert-linalg-to-affine-loops -affine-loop-tile="tile-size=32" -lower-affine -convert-linalg-to-llvm -convert-scf-to-std -convert-std-to-llvm"
+CFLAGS="-raise-affine-to-linalg -convert-linalg-to-affine-loops -affine-loop-tile="tile-size=32" -lower-affine -convert-linalg-to-llvm -convert-scf-to-std -convert-std-to-llvm"
 
 for bm in "${targets[@]}"; do
   x=`echo $bm | sed -e 's/\.mlir$//g'`
