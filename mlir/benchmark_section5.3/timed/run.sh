@@ -18,11 +18,10 @@ CFLAGS="-convert-linalg-to-affine-loops -lower-affine -convert-scf-to-std -conve
 RUNNER="mlir-cpu-runner -O3 -e main -entry-point-result=void -shared-libs=/llvm-project/build/lib/libmlir_test_cblas_interface.so,/llvm-project/build/lib/libmlir_runner_utils.so"
 
 for bm in "${targets[@]}"; do
-  echo $bm
   x=`echo $bm | sed -e 's/\.mlir$//g'`
   for i in 1 2 3 4 5; do
     t=`mlir-opt $CFLAGS $bm | $RUNNER`
     x="$x:$t"
   done
-  #echo "$x"
-done
+  echo "$x"
+done &> results_chain.txt
