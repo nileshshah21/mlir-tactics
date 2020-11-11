@@ -25,7 +25,7 @@ targets=(
 
 echo "Running Clang -O3"
 CFLAGS="-convert-linalg-to-affine-loops -lower-affine -convert-scf-to-std -convert-std-to-llvm"
-RUNNER="mlir-cpu-runner -O3 -e main -entry-point-result=void -shared-libs=/llvm-project-install/lib/libmlir_test_cblas_interface.so,/llvm-project-install/lib/libmlir_runner_utils.so"
+RUNNER="mlir-cpu-runner -O3 -e main -entry-point-result=void -shared-libs=/llvm-project/build/lib/libmlir_test_cblas_interface.so,/llvm-project/build/lib/libmlir_runner_utils.so"
 
 for bm in "${targets[@]}"; do
   x=`echo $bm | sed -e 's/\.mlir$//g'`
