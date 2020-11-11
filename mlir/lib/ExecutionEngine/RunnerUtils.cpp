@@ -73,7 +73,7 @@ extern "C" void print_flops(double flops) {
 }
 
 extern "C" void print_double(double number) {
-  fprintf(stderr, "%lf NUMBER\n", number);
+  fprintf(stdout, "%lf\n", number);
 }
 
 /// Returns the number of seconds since Epoch 1970-01-01 00:00:00 +0000 (UTC).
