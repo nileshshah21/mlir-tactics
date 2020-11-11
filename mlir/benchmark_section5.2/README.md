@@ -19,3 +19,16 @@ g++ -std=c++11 print_stats.cpp -o print_stats
 ./print_stats results_blas.txt
 ```
 We expect: geomean MLT-blas > geomean MLT-Linalg > geomean clang.
+
+To inspect the raisied kernels, type:
+
+```
+mlir-opt -raise-affine-to-linalg file.mlir
+```
+
+or
+
+```
+mlir-opt -raise-affine-to-blas-cpu file.mlir
+```
+
