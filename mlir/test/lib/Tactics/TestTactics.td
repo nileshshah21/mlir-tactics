@@ -170,7 +170,7 @@ def testStrExprposeATensorAndLiftToMatmulTactic : Tactics<"C(i,j) += A(k,i) * B(
 
 // experiments as described in Gareev et al.
 // tensor ab-ac-cb sizes 1024x1024 - 1024x1024 - 1024x1024
-def TENSORabaccb : Tactics<"C(a,b) += A(a,c) * B(c,b)", [
+def GEMM : Tactics<"C(i,j) += A(i,k) * B(k,j)", [
   matmulBuilder<StrExpr<"N">, StrExpr<"N">, M<1>, N<1>, K<1>, Constant<"1">, Constant<"1">,
                 Inputs<["A", "B"]>, Outputs<["C"]>>,
   eraseOpBuilder
