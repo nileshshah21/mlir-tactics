@@ -39,21 +39,21 @@ convenience this is already done.
 vim /llvm-project/mlir/test/lib/Tactics/TestTactics.td 
 ```
 
-At line 173 we can see our GEMM tactics. To see the genrated 
-matchers and builder type:
+At line 173 we can see our GEMM tactics. To see the generated 
+matchers and builders type:
 
 ``` 
 mlir-tblgen --gen-tactics-linalg TestTactics.td 
 ```
 
-The generated matchers and builders are visibile in class: 
+The generated matchers and builders can be inspected in the struct: 
 
 ```
 struct tactic1 : public mlir::OpRewritePattern<mlir::AffineForOp> { ... }
 
 ```
 
-Note in case you get mlir-tblgen command not found type:
+Note: in case you get ```mlir-tblgen command not found``` type:
 
 ```
 export PATH=/llvm-project-install/bin:$PATH
@@ -71,6 +71,6 @@ mlir-opt --raise-affine-to-linalg mm.mlir
 The body of the ```func @contraction.ab.ac.cd(...) ``` has now
 been swapped with a single high-level op ```linalg.matmul```
 
-A similar osservation can be made for ```2mm.mlir``` and ```3mm.mlir```,
-for ```mm_linearized.mlir``` no decetion will occur due to the linearized
+A similar observation can be made for ```2mm.mlir``` and ```3mm.mlir```,
+for ```mm_linearized.mlir``` no detection will occur due to the linearized
 accesses.

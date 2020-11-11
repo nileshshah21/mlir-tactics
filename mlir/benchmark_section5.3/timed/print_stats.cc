@@ -5,6 +5,7 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include <cmath>
 
 using vec = std::vector<std::tuple<std::string, std::vector<float>>>;
 using vecFiltered = std::vector<std::pair<std::string, float>>;
@@ -38,15 +39,23 @@ vec split(const std::vector<std::string> &lines) {
   return res;
 }
 
-float findMax(const std::vector<float> &all) {
-  auto it = std::max_element(all.begin(), all.end());
+float findMin(const std::vector<float> &all) {
+  auto it = std::min_element(all.begin(), all.end());
   return all.at(std::distance(all.begin(), it));
+}
+
+double computeGeoMean(const std::vector<float> &data) {
+
+  auto product = 1.0;
+  for (const auto x : data)
+    product *= x;
+  return std::pow(product, 1.0/data.size());
 }
 
 vecFiltered filter(const vec &vector) {
   vecFiltered res{};
   for (const auto &v : vector) {
-    float min = findMax(std::get<1>(v));
+    float min = findMin(std::get<1>(v));
     res.push_back(std::make_pair(std::get<0>(v), min));
   }
   return res;
@@ -70,7 +79,11 @@ int main(int argc, char *argv[]) {
   vecFiltered resFiltered{};
   resFiltered = filter(res);
 
+  std::vector<float> all;
   for (const auto &r : resFiltered) {
     std::cout << "(" << r.first << ", " << r.second << ")\n";
+    all.push_back(r.second);
   }
+  auto geomean = computeGeoMean(all);
+  std::cout << "\n\nGeomean: " << geomean << "\n";
 }

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
+export PATH=/llvm-project-install/bin:$PATH
 export OMP_NUM_THREADS=1
 export LD_LIBRARY_PATH="/usr/local/lib:/opt/intel/mkl/lib/intel64"
+
 
 targets=(
 	"atax.mlir"
@@ -21,9 +23,9 @@ targets=(
 	"contraction_abcd_aebf_fdec.mlir"
 )
 
-echo "Running default Clang"
+echo "Running Clang -O3"
 CFLAGS="-convert-linalg-to-affine-loops -lower-affine -convert-scf-to-std -convert-std-to-llvm"
-RUNNER="mlir-cpu-runner -O3 -e main -entry-point-result=void -shared-libs=/llvm-project/build/lib/libmlir_test_cblas_interface.so,/llvm-project/build/lib/libmlir_runner_utils.so"
+RUNNER="mlir-cpu-runner -O3 -e main -entry-point-result=void -shared-libs=/llvm-project-install/lib/libmlir_test_cblas_interface.so,/llvm-project-install/lib/libmlir_runner_utils.so"
 
 for bm in "${targets[@]}"; do
   x=`echo $bm | sed -e 's/\.mlir$//g'`
@@ -34,7 +36,7 @@ for bm in "${targets[@]}"; do
   echo "$x"
 done &> results_clang.txt
 
-echo "Running Linalg with tile factor of 32"
+echo "Running MLT-Linalg"
 CFLAGS="-raise-affine-to-linalg -convert-linalg-to-affine-loops -affine-loop-tile="tile-size=32" -lower-affine -convert-linalg-to-llvm -convert-scf-to-std -convert-std-to-llvm"
 
 for bm in "${targets[@]}"; do
@@ -46,7 +48,7 @@ for bm in "${targets[@]}"; do
   echo "$x"
 done &> results_linalg.txt
 
-echo "Running BLAS"
+echo "Running MLT-BLAS"
 CFLAGS="-raise-affine-to-blas-cpu -convert-linalg-to-affine-loops -lower-affine -convert-linalg-to-llvm -convert-scf-to-std -convert-std-to-llvm"
 
 for bm in "${targets[@]}"; do

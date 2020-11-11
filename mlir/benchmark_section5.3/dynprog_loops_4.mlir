@@ -1,4 +1,4 @@
-func @chainMatmul() {
+func @main() {
     %arg0 = alloc() : memref<800x1100xf32>
     %arg1 = alloc() : memref<1100x900xf32>
     %arg2 = alloc() : memref<900x1200xf32>
@@ -29,6 +29,7 @@ func @chainMatmul() {
       }
     }
 
+    %t_start = call @rtclock() : () -> f64
     affine.for %i = 0 to 800 {
       affine.for %j = 0 to 900 {
         affine.for %k = 0 to 1100 {
@@ -67,6 +68,11 @@ func @chainMatmul() {
       }
     }
   }
-
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  call @print_double(%t) : (f64) -> ()
   return
 }  
+
+func @print_double(f64)
+func @rtclock() -> f64
