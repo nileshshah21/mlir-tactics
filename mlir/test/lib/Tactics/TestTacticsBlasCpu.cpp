@@ -18,6 +18,6 @@ struct TestTacticsBlasDriver
 namespace mlir {
 void registerTacticsTestBlasPassCpu() {
   mlir::PassRegistration<TestTacticsBlasDriver>(
-      "test-tactics-blas-cpu", "Run test blas tactics for cpu");
+      "raise-affine-to-blas-cpu", "Run test blas tactics for cpu");
 }
 } // end namespace mlir
