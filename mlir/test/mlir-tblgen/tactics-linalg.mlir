@@ -1,4 +1,4 @@
-// RUN: mlir-opt -mlir-disable-threading -test-tactics-linalg %s | FileCheck %s
+// RUN: mlir-opt -mlir-disable-threading -raise-affine-to-linalg %s | FileCheck %s
 
 func @gemmT(%A: memref<22x42xf32>, %B: memref<22x42xf32>, %C: memref<42x42xf32>) {
   // CHECK: linalg.matmul

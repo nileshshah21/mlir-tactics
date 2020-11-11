@@ -17,7 +17,7 @@ struct TestTacticsLinalgDriver
 
 namespace mlir {
 void registerTacticsTestLinalgPass() {
-  mlir::PassRegistration<TestTacticsLinalgDriver>("test-tactics-linalg",
+  mlir::PassRegistration<TestTacticsLinalgDriver>("raise-affine-to-linalg",
                                                   "Run test tactics");
 }
 } // end namespace mlir
