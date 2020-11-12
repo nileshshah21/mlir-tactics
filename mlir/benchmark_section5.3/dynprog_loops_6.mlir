@@ -1,4 +1,4 @@
-func @chainMatmul() {
+func @main() {
 
   %A1 = alloc() : memref<1500x400xf32>
   %A2 = alloc() : memref<400x2000xf32>
