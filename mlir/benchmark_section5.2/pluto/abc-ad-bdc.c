@@ -13,7 +13,7 @@
 #include <polybench.h>
 
 /* Include benchmark-specific header. */
-#include "abc-ad-bcd.h"
+#include "abc-ad-bdc.h"
 
 static
 void init_array(int ni, int nj,

@@ -71,13 +71,15 @@ func @main() {
      memref<900x1200xf32>, memref<800x1200xf32>, f32, f32, memref<800x900xf32>) -> ()
   %t_end = call @rtclock() : () -> f64
   %t = subf %t_end, %t_start : f64
-  %num_flops = constant 4104000000 : index
-  %num_flops_i = index_cast %num_flops : index to i64
-  %num_flops_f = sitofp %num_flops_i : i64 to f64
-  %flops = divf %num_flops_f, %t : f64
-  call @print_flops(%flops) : (f64) -> ()
+  //%num_flops = constant 4104000000 : index
+  //%num_flops_i = index_cast %num_flops : index to i64
+  //%num_flops_f = sitofp %num_flops_i : i64 to f64
+  //%flops = divf %num_flops_f, %t : f64
+  //call @print_flops(%flops) : (f64) -> ()
+  call @print_double(%t) : (f64) -> ()
   return 
 }
 
 func @print_flops(f64)
+func @print_double(f64)
 func @rtclock() -> f64

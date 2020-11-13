@@ -33,16 +33,18 @@ func @main() {
     (memref<1024x1024xf32>, memref<32x1024x32xf32>, memref<32x32x1024xf32>) -> ()
   %t_end = call @rtclock() : () -> (f64)
   %t = subf %t_end, %t_start : f64
-  %num_flops = constant 2147483648 : index
-  %num_flops_i = index_cast %num_flops : index to i64
-  %num_flops_f = sitofp %num_flops_i : i64 to f64
-  %flops = divf %num_flops_f, %t : f64
-  call @print_flops(%flops) : (f64) -> ()
-  %pC = memref_cast %C : memref<1024x1024xf32> to memref<*xf32>
+  //%num_flops = constant 2147483648 : index
+  //%num_flops_i = index_cast %num_flops : index to i64
+  //%num_flops_f = sitofp %num_flops_i : i64 to f64
+  //%flops = divf %num_flops_f, %t : f64
+  //call @print_flops(%flops) : (f64) -> ()
+  //%pC = memref_cast %C : memref<1024x1024xf32> to memref<*xf32>
   //call @print_memref_f32(%pC) : (memref<*xf32>) -> ()
+  call @print_double(%t) : (f64) -> ()
   return
 }
 
 func @rtclock() -> f64
 func @print_flops(f64)
+func @print_double(f64)
 func @print_memref_f32(memref<*xf32>)
