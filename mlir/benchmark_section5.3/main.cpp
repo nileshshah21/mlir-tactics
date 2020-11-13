@@ -45,14 +45,6 @@ float findMin(const std::vector<float> &all) {
   return all.at(std::distance(all.begin(), it));
 }
 
-double computeGeoMean(const std::vector<float> &data) {
-
-  auto product = 1.0;
-  for (const auto x : data)
-    product *= x;
-  return std::pow(product, 1.0/data.size());
-}
-
 vecFiltered filter(const vec &vector) {
   vecFiltered res{};
   for (const auto &v : vector) {

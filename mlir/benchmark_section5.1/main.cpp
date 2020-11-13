@@ -90,7 +90,6 @@ int main(int argc, char *argv[]) {
     \legend{{Detected, Oracle}}
     \end{{axis}}
     \end{{tikzpicture}}
-    \caption{{Number of callsites detected by Multi-Level Tactics compared to perfect matching (Oracle).}}
     \end{{figure}}
   \end{{document}}
   )", result);
