@@ -40,8 +40,8 @@ vec split(const std::vector<std::string> &lines) {
   return res;
 }
 
-float findMax(const std::vector<float> &all) {
-  auto it = std::max_element(all.begin(), all.end());
+float findMin(const std::vector<float> &all) {
+  auto it = std::min_element(all.begin(), all.end());
   return all.at(std::distance(all.begin(), it));
 }
 
@@ -56,14 +56,49 @@ double computeGeoMean(const std::vector<float> &data) {
 vecFiltered filter(const vec &vector) {
   vecFiltered res{};
   for (const auto &v : vector) {
-    float min = findMax(std::get<1>(v));
+    float min = findMin(std::get<1>(v));
     res.push_back(std::make_pair(std::get<0>(v), min));
   }
   return res;
 }
 
+float computeFlops(std::string name, float time) {
+  if (name.compare("atax") == 0)
+    return 15960000.0 / time / 1.0E9;
+  if (name.compare("2mm") == 0) 
+    return 4104000000.0 / time / 1.0E9;
+  if (name.compare("3mm") == 0) 
+    return 5400000000.0 / time / 1.0E9;
+  if (name.compare("ab-acd-dbc") == 0)
+    return 2147483648.0 / time / 1.0E9;
+  if (name.compare("ab-cad-dcb") == 0)
+    return 2147483648.0 / time / 1.0E9;
+  if (name.compare("abc-acd-db") == 0)
+    return 2147483648.0 / time / 1.0E9;
+  if (name.compare("abc-ad-bdc") == 0)
+    return 2147483648.0 / time / 1.0E9;
+  if (name.compare("abc-bda-dc") == 0)
+    return 2147483648.0 / time / 1.0E9;
+  if (name.compare("abcd-aebf-dfce") == 0)
+    return 2147483648.0 / time / 1.0E9;
+  if (name.compare("abcd-aebf-fdec") == 0)
+    return 2147483648.0 / time/ 1.0E9;
+  if (name.compare("bicg") == 0)
+    return 15960000.0 / time/ 1.0E9;
+  if (name.compare("gemm") == 0)
+    return 2640000000.0 / time / 1.0E9;
+  if (name.compare("gemver") == 0)
+    return 80000000.0 / time / 1.0E9;
+  if (name.compare("gesummv") == 0)
+    return 16000000.0 / time / 1.0E9;
+  if (name.compare("mvt") == 0)
+    return 16000000.0 / time / 1.0E9;
+  std::cout << "flops number not available for: " << name << std::endl;
+  assert(0);
+}
+
 void buildBarPlot(const std::vector<std::string> &all) {
-  assert(all.size() == 3);
+  assert(all.size() == 4);
   
   std::string s = fmt::format(R"(
   \documentclass{{article}}
@@ -75,6 +110,7 @@ void buildBarPlot(const std::vector<std::string> &all) {
     \definecolor{{aluminium2}}{{rgb}}{{0.827,0.843,0.812}}
     \definecolor{{blind_safe_one_scheme_four_colors}}{{RGB}}{{166,206,227}}
     \definecolor{{blind_safe_two_scheme_four_colors}}{{RGB}}{{31,120,180}}
+    \definecolor{{blind_safe_three_scheme_four_colors}}{{RGB}}{{178,223,138}}
 
     \begin{{document}}
     \title{{Experiment Section 5.2}}
@@ -110,25 +146,29 @@ void buildBarPlot(const std::vector<std::string> &all) {
     \addplot+ [orange3] coordinates {{
       {0}
     }};
-    
-    \addplot+ [blind_safe_one_scheme_four_colors] coordinates {{
+  
+    \addplot+ [blind_safe_three_scheme_four_colors] coordinates {{
       {1}
     }};
-    \addplot+ [blind_safe_two_scheme_four_colors] coordinates {{
+    
+    \addplot+ [blind_safe_one_scheme_four_colors] coordinates {{
       {2}
     }};
-    \legend{{Clang -O3, MLT-Linalg, MLT-Blas}}
+    \addplot+ [blind_safe_two_scheme_four_colors] coordinates {{
+      {3}
+    }};
+    \legend{{Clang -O3, Pluto, MLT-Linalg, MLT-Blas}}
     \end{{axis}}
     \end{{tikzpicture}}
     \end{{figure*}}
   \end{{document}}
-  )", all[0], all[1], all[2]);
+  )", all[0], all[1], all[2], all[3]);
 
   std::cout << s << std::endl;
 }
 
 int main(int argc, char *argv[]) {
-  if (argc != 4)
+  if (argc != 5)
     return 0;
   
   std::vector<std::string> allFormattedResults;
@@ -151,9 +191,10 @@ int main(int argc, char *argv[]) {
     std::string formattedResults;
     std::vector<float> all;
     for (const auto &r : resFiltered) {
-      std::string formattedResult = "(" + r.first + ", " + std::to_string(r.second) + ") ";
+      float flops = computeFlops(r.first, r.second);
+      std::string formattedResult = "(" + r.first + ", " + std::to_string(flops) + ") ";
       formattedResults += formattedResult;
-      all.push_back(r.second);
+      all.push_back(flops);
     }
     auto geomean = computeGeoMean(all);
     std::string formattedGeomean = "(geomean, " + std::to_string(geomean) + ")\n";
