@@ -17,3 +17,9 @@ ods_def<BatchMatmulOp>:
 def batch_matmul(A: f32(Batch, M, K), B: f32(Batch, K, N)) -> (C: f32(Batch, M, N)) {
   C(b, m, n) = std_addf<k>(std_mulf(A(b, m, k), B(b, k, n)));
 }
+
+ods_def<ConvNCHWOp>:
+def conv_2d_nchw(I: f32(N, C, H, W), K: f32(F, C, KH, KW)) -> (O: f32(N, F, H, W)) {
+  O(n, f, h, w) = std_addf<kh, kw>(std_mulf(
+    I(n, c, h + kh, w + kw), K(f, c, kh, kw)));
+}
