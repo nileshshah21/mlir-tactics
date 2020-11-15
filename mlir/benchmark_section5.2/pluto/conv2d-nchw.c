@@ -11,7 +11,7 @@
 
 #include <polybench.h>
 
-#include <conv2d.h>
+#include <conv2d-nchw.h>
 
 static
 void init_array(int ni, int nj,
