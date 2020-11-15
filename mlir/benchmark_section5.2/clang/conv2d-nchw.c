@@ -34,7 +34,7 @@ void print_array(int ni,
 	for (int i = 0; i < ni; i++) {
 		if ((i * ni) % 20 == 0) {
 			fprintf(POLYBENCH_DUMP_TARGET, "\n");
-			fprintf(POLYBENCH_DUMP_TARGET, DATA_PRINTF_MODIFIER, output[i]);
+			fprintf(POLYBENCH_DUMP_TARGET, DATA_PRINTF_MODIFIER, output[i][0]);
 		}
 	}	
 	POLYBENCH_DUMP_END("OUT");
