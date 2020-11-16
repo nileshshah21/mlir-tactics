@@ -1,4 +1,4 @@
-In Section 5.1 we demonstrate how we can lift a single matrix multiplication.
+In Section 5.1, we demonstrate how we can lift a single matrix multiplication.
 Here we generalize our lifting to cover more computational motifs
 (matrix-multiplication, matrix-vector products, convolutions and TTGT
 conversions of tensor contractions to matrix products). We evaluate two raising
