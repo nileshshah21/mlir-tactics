@@ -93,6 +93,8 @@ float computeFlops(std::string name, float time) {
     return 16000000.0 / time / 1.0E9;
   if (name.compare("mvt") == 0)
     return 16000000.0 / time / 1.0E9;
+  if (name.compare("conv2d-nchw") == 0)
+    return 8589934592.0 / time / 1.0E9;
   std::cout << "flops number not available for: " << name << std::endl;
   assert(0);
 }
