@@ -139,10 +139,11 @@ void buildBarPlot(const std::vector<std::string> &all) {
       x tick label style={{xshift=.4em,rotate=45,anchor=east}},
       ytick={{1, 4, 8, 16, 32, 64, 128, 256}},
       yminorticks=true,
+      legend style={{at={{(1,1.2)}},anchor=north east}},
       xlabel={{}},
       extra y ticks={{1, 4, 16, 32, 64, 128, 256}},
       extra y tick labels={{}}, % do not print extra tick
-      symbolic x coords={{atax, bicg, mvt, gemver, gesummv, 2mm, 3mm, gemm, ab-acd-dbc, abc-acd-db, abc-ad-bdc, ab-cad-dcb, abc-bda-dc, abcd-aebf-dfce, abcd-aebf-fdec, geomean}},
+      symbolic x coords={{atax, bicg, mvt, gemver, gesummv, 2mm, 3mm, conv2d-nchw, gemm, ab-acd-dbc, abc-acd-db, abc-ad-bdc, ab-cad-dcb, abc-bda-dc, abcd-aebf-dfce, abcd-aebf-fdec, geomean}},
       xtick=data,
   ]
     \addplot+ [orange3] coordinates {{
