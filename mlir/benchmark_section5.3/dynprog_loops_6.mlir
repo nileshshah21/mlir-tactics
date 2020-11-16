@@ -53,7 +53,7 @@ func @main() {
     }
   }
 
-
+  %t_start = call @rtclock() : () -> f64
   affine.for %i = 0 to 1500 {
     affine.for %j = 0 to 2000 {
       affine.for %k = 0 to 400 {
@@ -118,6 +118,12 @@ func @main() {
       }
     }
   }
+  %t_end = call @rtclock() : () -> f64
+  %t = subf %t_end, %t_start : f64
+  call @print_double(%t) : (f64) -> ()
 
   return
 }
+
+func @print_double(f64)
+func @rtclock() -> f64
