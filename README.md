@@ -1,3 +1,7 @@
+# NOTE
+
+Use this branch with the docker file that you can pull: ```docker pull lchelini/cgo```
+
 # The LLVM Compiler Infrastructure
 
 This directory and its sub-directories contain source code for LLVM,
