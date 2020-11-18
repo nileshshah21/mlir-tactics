@@ -66,7 +66,7 @@ float computeFlops(std::string name, float time) {
   if (name.compare("atax") == 0)
     return 15960000.0 / time / 1.0E9;
   if (name.compare("2mm") == 0) 
-    return 4104000000.0 / time / 1.0E9;
+    return 3312000000.0 / time / 1.0E9;
   if (name.compare("3mm") == 0) 
     return 5400000000.0 / time / 1.0E9;
   if (name.compare("ab-acd-dbc") == 0)
@@ -88,9 +88,9 @@ float computeFlops(std::string name, float time) {
   if (name.compare("gemm") == 0)
     return 2640000000.0 / time / 1.0E9;
   if (name.compare("gemver") == 0)
-    return 80000000.0 / time / 1.0E9;
+    return 40000000.0 / time / 1.0E9;
   if (name.compare("gesummv") == 0)
-    return 16000000.0 / time / 1.0E9;
+    return 6763900.0 / time / 1.0E9;
   if (name.compare("mvt") == 0)
     return 16000000.0 / time / 1.0E9;
   if (name.compare("conv2d-nchw") == 0)
