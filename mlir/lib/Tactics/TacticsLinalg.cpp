@@ -1,7 +1,7 @@
 #include "HelpersLinalg.h"
 
 namespace {
-#include "TestTacticsLinalg.inc"
+#include "TacticsLinalg.inc"
 }
 
 namespace {

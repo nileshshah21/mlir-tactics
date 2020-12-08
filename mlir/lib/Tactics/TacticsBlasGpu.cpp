@@ -1,7 +1,7 @@
-#include "HelpersCpu.h"
+#include "HelpersGpu.h"
 
 namespace {
-#include "TestTacticsBlasCpu.inc"
+#include "TacticsBlasGpu.inc"
 }
 
 namespace {
@@ -16,8 +16,8 @@ struct TestTacticsBlasDriver
 } // end namespace
 
 namespace mlir {
-void registerTacticsTestBlasPassCpu() {
+void registerTacticsTestBlasPassGpu() {
   mlir::PassRegistration<TestTacticsBlasDriver>(
-      "raise-affine-to-blas-cpu", "Run test blas tactics for cpu");
+      "test-tactics-blas-gpu", "Run test blas tactics for gpu");
 }
 } // end namespace mlir
