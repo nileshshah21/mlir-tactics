@@ -36,14 +36,14 @@ Now that we have generated TDS we can plug-in into MLIR. For
 convenience this is already done. 
 
 ``` 
-vim /llvm-project/mlir/test/lib/Tactics/TestTactics.td 
+vim /llvm-project/mlir/test/lib/Tactics/Tactics.td 
 ```
 
 At line 173 we can see our GEMM tactic. To see the generated 
 matchers and builders type:
 
 ``` 
-mlir-tblgen --gen-tactics-linalg TestTactics.td 
+mlir-tblgen --gen-tactics-linalg Tactics.td 
 ```
 
 The generated matchers and builders can be inspected in the struct: 

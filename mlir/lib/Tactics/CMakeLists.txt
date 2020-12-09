@@ -1,48 +1,48 @@
 set(LLVM_OPTIONAL_SOURCES
-  TestTacticsLinalg.cpp
-  TestTacticsBlasCpu.cpp
-  TestTacticsBlasGpu.cpp
+  TacticsLinalg.cpp
+  TacticsBlasCpu.cpp
+  TacticsBlasGpu.cpp
 )
 
-set(LLVM_TARGET_DEFINITIONS TestTactics.td)
-mlir_tablegen(TestTacticsLinalg.inc -gen-tactics-linalg)
-mlir_tablegen(TestTacticsBlasCpu.inc -gen-tactics-blas-cpu)
-mlir_tablegen(TestTacticsBlasGpu.inc -gen-tactics-blas-gpu)
-add_public_tablegen_target(MLIRTestTacticsLinalgInc)
-add_public_tablegen_target(MLIRTestTacticsBlasCpuInc)
-add_public_tablegen_target(MLIRTestTacticsBlasGpuInc)
+set(LLVM_TARGET_DEFINITIONS Tactics.td)
+mlir_tablegen(TacticsLinalg.inc -gen-tactics-linalg)
+mlir_tablegen(TacticsBlasCpu.inc -gen-tactics-blas-cpu)
+mlir_tablegen(TacticsBlasGpu.inc -gen-tactics-blas-gpu)
+add_public_tablegen_target(MLIRTacticsLinalgInc)
+add_public_tablegen_target(MLIRTacticsBlasCpuInc)
+add_public_tablegen_target(MLIRTacticsBlasGpuInc)
 
-add_llvm_library(MLIRTestTacticsLinalg
-  TestTacticsLinalg.cpp
+add_llvm_library(MLIRTacticsLinalg
+  TacticsLinalg.cpp
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/IR
 )
 
-add_llvm_library(MLIRTestTacticsBlasCpu
-  TestTacticsBlasCpu.cpp
+add_llvm_library(MLIRTacticsBlasCpu
+  TacticsBlasCpu.cpp
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/IR
 )
 
-add_llvm_library(MLIRTestTacticsBlasGpu
-  TestTacticsBlasGpu.cpp
+add_llvm_library(MLIRTacticsBlasGpu
+  TacticsBlasGpu.cpp
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/IR
 )
 
-add_dependencies(MLIRTestTacticsBlasCpu
-  MLIRTestTacticsBlasCpuInc
+add_dependencies(MLIRTacticsBlasCpu
+  MLIRTacticsBlasCpuInc
 )
 
-add_dependencies(MLIRTestTacticsLinalg
-  MLIRTestTacticsLinalgInc
+add_dependencies(MLIRTacticsLinalg
+  MLIRTacticsLinalgInc
 )
 
-add_dependencies(MLIRTestTacticsBlasGpu
-  MLIRTestTacticsBlasGpuInc
+add_dependencies(MLIRTacticsBlasGpu
+  MLIRTacticsBlasGpuInc
 )
 
-target_link_libraries(MLIRTestTacticsBlasCpu
+target_link_libraries(MLIRTacticsBlasCpu
   MLIRDialect
   MLIRIR
   MLIRPass
@@ -50,7 +50,7 @@ target_link_libraries(MLIRTestTacticsBlasCpu
   MLIRAffineOps
 ) 
 
-target_link_libraries(MLIRTestTacticsLinalg
+target_link_libraries(MLIRTacticsLinalg
   MLIRDialect
   MLIRIR
   MLIRPass
@@ -58,7 +58,7 @@ target_link_libraries(MLIRTestTacticsLinalg
   MLIRAffineOps
 )
 
-target_link_libraries(MLIRTestTacticsBlasGpu
+target_link_libraries(MLIRTacticsBlasGpu
   MLIRDialect
   MLIRIR
   MLIRPass

@@ -35,9 +35,9 @@ set(LIBS
   MLIRPass
   MLIRTransforms
   MLIRTransformUtils
-  MLIRTestTacticsLinalg
-  MLIRTestTacticsBlasCpu
-  MLIRTestTacticsBlasGpu
+  MLIRTacticsLinalg
+  MLIRTacticsBlasCpu
+  MLIRTacticsBlasGpu
   MLIRSupport
   MLIRIR
   )
