@@ -1,7 +1,7 @@
 #include "HelpersGpu.h"
 
 namespace {
-#include "TestTacticsBlasGpu.inc"
+#include "TacticsBlasGpu.inc"
 }
 
 namespace {

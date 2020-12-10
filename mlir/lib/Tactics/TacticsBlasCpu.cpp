@@ -1,7 +1,7 @@
 #include "HelpersCpu.h"
 
 namespace {
-#include "TestTacticsBlasCpu.inc"
+#include "TacticsBlasCpu.inc"
 }
 
 namespace {
