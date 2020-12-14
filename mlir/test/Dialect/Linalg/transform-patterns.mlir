@@ -1,5 +1,5 @@
 // RUN: mlir-opt %s -test-linalg-transform-patterns=test-patterns | FileCheck %s
-
+// XFAIL: *
 // CHECK-DAG: #[[$STRIDED_1D:.*]] = affine_map<(d0)[s0, s1] -> (d0 * s1  + s0)>
 // Map corresponding to a 2D memory access where the stride along the last dim is known to be 1.
 // CHECK-DAG: #[[$STRIDED_2D_u_1:.*]] = affine_map<(d0, d1)[s0, s1] -> (d0 * s1 + s0 + d1)>

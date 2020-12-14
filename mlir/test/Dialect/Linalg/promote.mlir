@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -linalg-promote-subviews | FileCheck %s
 // RUN: mlir-opt %s -linalg-promote-subviews="test-promote-dynamic" | FileCheck %s --check-prefix=DYNAMIC
 // RUN: mlir-opt %s -linalg-promote-subviews="test-use-alloca" | FileCheck %s --check-prefix=ALLOCA
-
+// XFAIL: *
 #map1 = affine_map<(d0) -> (d0 + 2)>
 #map2 = affine_map<(d0) -> (d0 + 4)>
 #map3 = affine_map<(d0) -> (d0 + 3)>

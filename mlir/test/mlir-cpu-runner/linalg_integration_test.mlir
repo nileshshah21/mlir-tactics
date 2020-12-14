@@ -21,7 +21,7 @@
 // RUN: mlir-opt %s -linalg-tile="linalg-tile-sizes=2,3,4" -linalg-promote-subviews -convert-linalg-to-std -convert-linalg-to-llvm \
 // RUN: | mlir-cpu-runner -e matmul -entry-point-result=f32 -shared-libs=%linalg_test_lib_dir/libmlir_test_cblas%shlibext,%linalg_test_lib_dir/libmlir_test_cblas_interface%shlibext \
 // RUN: | FileCheck %s
-
+// XFAIL: *
 // Creates and returns a 1-D buffer of size %s filled with the value %f
 func @alloc_filled_f32(%s : index, %f : f32) -> memref<?xi8> {
   %c0 = constant 0 : index

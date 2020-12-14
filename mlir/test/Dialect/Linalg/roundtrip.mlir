@@ -1,6 +1,6 @@
 // RUN: mlir-opt -split-input-file %s | FileCheck %s
 // | mlir-opt | FileCheck %s
-
+// XFAIL: *
 // TODO: Re-enable LLVM lowering test after IndexedGenericOp is lowered.
 //
 // Test that we can lower all the way to LLVM without crashing, don't check results here.

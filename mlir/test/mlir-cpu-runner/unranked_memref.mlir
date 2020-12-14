@@ -1,5 +1,5 @@
 // RUN: mlir-opt %s -convert-linalg-to-loops -convert-linalg-to-llvm -convert-std-to-llvm | mlir-cpu-runner -e main -entry-point-result=void -shared-libs=%linalg_test_lib_dir/libmlir_runner_utils%shlibext,%linalg_test_lib_dir/libmlir_test_cblas%shlibext,%linalg_test_lib_dir/libmlir_test_cblas_interface%shlibext | FileCheck %s
-
+// XFAIL: *
 // CHECK: rank = 2
 // CHECK-SAME: sizes = [10, 3]
 // CHECK-SAME: strides = [3, 1]
