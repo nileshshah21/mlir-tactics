@@ -24,57 +24,16 @@ extern "C" void _mlir_ciface_print_memref_vector_4x4xf32(
   impl::printMemRef(*M);
 }
 
-#define MEMREF_CASE(TYPE, RANK)                                                \
-  case RANK:                                                                   \
-    impl::printMemRef(*(static_cast<StridedMemRefType<TYPE, RANK> *>(ptr)));   \
-    break
-
 extern "C" void _mlir_ciface_print_memref_i8(UnrankedMemRefType<int8_t> *M) {
-  printUnrankedMemRefMetaData(std::cout, *M);
-  int64_t rank = M->rank;
-  void *ptr = M->descriptor;
-
-  switch (rank) {
-    MEMREF_CASE(int8_t, 0);
-    MEMREF_CASE(int8_t, 1);
-    MEMREF_CASE(int8_t, 2);
-    MEMREF_CASE(int8_t, 3);
-    MEMREF_CASE(int8_t, 4);
-  default:
-    assert(0 && "Unsupported rank to print");
-  }
+  impl::printMemRef(*M);
 }
 
 extern "C" void _mlir_ciface_print_memref_i32(UnrankedMemRefType<int32_t> *M) {
-  printUnrankedMemRefMetaData(std::cout, *M);
-  int64_t rank = M->rank;
-  void *ptr = M->descriptor;
-
-  switch (rank) {
-    MEMREF_CASE(int32_t, 0);
-    MEMREF_CASE(int32_t, 1);
-    MEMREF_CASE(int32_t, 2);
-    MEMREF_CASE(int32_t, 3);
-    MEMREF_CASE(int32_t, 4);
-  default:
-    assert(0 && "Unsupported rank to print");
-  }
+  impl::printMemRef(*M);
 }
 
 extern "C" void _mlir_ciface_print_memref_f32(UnrankedMemRefType<float> *M) {
-  printUnrankedMemRefMetaData(std::cout, *M);
-  int64_t rank = M->rank;
-  void *ptr = M->descriptor;
-
-  switch (rank) {
-    MEMREF_CASE(float, 0);
-    MEMREF_CASE(float, 1);
-    MEMREF_CASE(float, 2);
-    MEMREF_CASE(float, 3);
-    MEMREF_CASE(float, 4);
-  default:
-    assert(0 && "Unsupported rank to print");
-  }
+  impl::printMemRef(*M);
 }
 
 extern "C" void print_memref_i32(int64_t rank, void *ptr) {
@@ -110,7 +69,11 @@ _mlir_ciface_print_memref_4d_f32(StridedMemRefType<float, 4> *M) {
 
 /// Prints GFLOPS rating.
 extern "C" void print_flops(double flops) {
-  fprintf(stderr, "%lf GFLOPS\n", flops / 1.0E9);
+  fprintf(stdout, "%lf\n", flops / 1.0E9);
+}
+
+extern "C" void print_double(double number) {
+  fprintf(stdout, "%lf\n", number);
 }
 
 /// Returns the number of seconds since Epoch 1970-01-01 00:00:00 +0000 (UTC).

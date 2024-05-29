@@ -102,7 +102,7 @@ public:
 
 /// Index is a special integer-like type with unknown platform-dependent bit
 /// width.
-class IndexType : public Type::TypeBase<IndexType, Type> {
+class IndexType : public Type::TypeBase<IndexType, Type, TypeStorage> {
 public:
   using Base::Base;
 
@@ -188,7 +188,7 @@ public:
 // FloatType
 //===----------------------------------------------------------------------===//
 
-class FloatType : public Type::TypeBase<FloatType, Type> {
+class FloatType : public Type::TypeBase<FloatType, Type, TypeStorage> {
 public:
   using Base::Base;
 
@@ -227,7 +227,7 @@ public:
 
 /// NoneType is a unit type, i.e. a type with exactly one possible value, where
 /// its value does not have a defined dynamic representation.
-class NoneType : public Type::TypeBase<NoneType, Type> {
+class NoneType : public Type::TypeBase<NoneType, Type, TypeStorage> {
 public:
   using Base::Base;
 
@@ -250,7 +250,7 @@ public:
   using ImplType = detail::ShapedTypeStorage;
   using Type::Type;
 
-  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // TODO: merge these two special values in a single one used everywhere.
   // Unfortunately, uses of `-1` have crept deep into the codebase now and are
   // hard to track.
   static constexpr int64_t kDynamicSize = -1;
@@ -357,7 +357,7 @@ public:
   /// Returns true of the given type can be used as an element of a vector type.
   /// In particular, vectors can consist of integer or float primitives.
   static bool isValidElementType(Type t) {
-    return t.isa<IntegerType>() || t.isa<FloatType>();
+    return t.isa<IntegerType, FloatType>();
   }
 
   ArrayRef<int64_t> getShape() const;
@@ -381,9 +381,8 @@ public:
     // Note: Non standard/builtin types are allowed to exist within tensor
     // types. Dialects are expected to verify that tensor types have a valid
     // element type within that dialect.
-    return type.isa<ComplexType>() || type.isa<FloatType>() ||
-           type.isa<IntegerType>() || type.isa<OpaqueType>() ||
-           type.isa<VectorType>() || type.isa<IndexType>() ||
+    return type.isa<ComplexType, FloatType, IntegerType, OpaqueType, VectorType,
+                    IndexType>() ||
            (type.getKind() > Type::Kind::LAST_STANDARD_TYPE);
   }
 
@@ -562,10 +561,9 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
-  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // TODO: merge these two special values in a single one used everywhere.
   // Unfortunately, uses of `-1` have crept deep into the codebase now and are
   // hard to track.
-  static constexpr int64_t kDynamicSize = -1;
   static int64_t getDynamicStrideOrOffset() {
     return ShapedType::kDynamicStrideOrOffset;
   }
@@ -722,6 +720,10 @@ AffineMap makeStridedLinearLayoutMap(ArrayRef<int64_t> strides, int64_t offset,
 /// Otherwise pass `t`'s layout into `simplifyAffineMap` and return a copy of
 /// `t` with simplified layout.
 MemRefType canonicalizeStridedLayout(MemRefType t);
+
+/// Return a version of `t` with a layout that has all dynamic offset and
+/// strides. This is used to erase the static layout.
+MemRefType eraseStridedLayout(MemRefType t);
 
 /// Given MemRef `sizes` that are either static or dynamic, returns the
 /// canonical "contiguous" strides AffineExpr. Strides are multiplicative and

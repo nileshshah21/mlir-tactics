@@ -62,13 +62,13 @@
 ; CHECK-O: Running pass: InstCombinePass on main
 ; CHECK-O: Running analysis: TargetLibraryAnalysis on main
 ; CHECK-O: Running analysis: OptimizationRemarkEmitterAnalysis on main
+; CHECK-O: Running analysis: TargetIRAnalysis on main
 ; CHECK-O: Running analysis: AAManager on main
 ; CHECK-O: Running analysis: BasicAA on main
 ; CHECK-O: Running analysis: ScopedNoAliasAA on main
 ; CHECK-O: Running analysis: TypeBasedAA on main
 ; CHECK-O: Running analysis: OuterAnalysisManagerProxy
 ; CHECK-O: Running pass: SimplifyCFGPass on main
-; CHECK-O: Running analysis: TargetIRAnalysis on main
 ; CHECK-O: Finished {{.*}}Function pass manager run.
 ; CHECK-O: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
 ; CHECK-O: Running analysis: GlobalsAA
@@ -85,10 +85,7 @@
 ; CHECK-O: Running pass: PostOrderFunctionAttrsPass on (main)
 ; CHECK-O: Invalidating all non-preserved analyses for: (main)
 ; CHECK-O: Clearing all analysis results for: main
-; CHECK-O: Invalidating analysis: FunctionAnalysisManagerCGSCCProxy on (main)
 ; CHECK-O3: Running pass: ArgumentPromotionPass on (main)
-; CHECK-O2: Running pass: CGSCCToFunctionPassAdaptor<{{.*}}PassManager{{.*}}>
-; CHECK-O: Running analysis: FunctionAnalysisManagerCGSCCProxy on (main)
 ; CHECK-O3: Running analysis: TargetIRAnalysis on main
 ; CHECK-O: Running analysis: PassInstrumentationAnalysis on main
 ; CHECK-O3: Running pass: CGSCCToFunctionPassAdaptor<{{.*}}PassManager{{.*}}>

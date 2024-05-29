@@ -184,6 +184,40 @@ static bool isAccessIndexInvariant(Value iv, Value index) {
   return !composeOp.getAffineValueMap().isFunctionOf(0, iv);
 }
 
+/// Checks if an affine load or store access depends on `forOp'. This also
+/// transitively checks if the load/store is dependent on another loop IV which
+/// in turn uses `forOp` is its loop bounds.
+//
+/// Pre-requisite: Loop bounds should be in canonical form.
+template <typename LoadOrStoreOp>
+bool mlir::isInvariantAccess(LoadOrStoreOp memOp, AffineForOp forOp) {
+
+  for (auto operand : memOp.getMapOperands()) {
+    if (!isAccessIndexInvariant(forOp.getInductionVar(), operand)) {
+      return false;
+    }
+  }
+  // Check whether other for op that use this IV as a bound operand impact the
+  // access.
+  DenseSet<Operation *> depForOps;
+  for (auto &use : forOp.getInductionVar().getUses()) {
+    if (auto depForOp = dyn_cast<AffineForOp>(use.getOwner()))
+      depForOps.insert(depForOp.getOperation());
+  }
+
+  // TODO/FIXME: assert if affine for op bounds are in canonical form.
+  for (auto depForOp : depForOps) {
+    if (!isInvariantAccess(memOp, cast<AffineForOp>(depForOp)))
+      return false;
+  }
+
+  return true;
+}
+
+// Explicitly instantiate the template so that the compiler knows we need them.
+template bool mlir::isInvariantAccess(AffineLoadOp loadOp, AffineForOp);
+template bool mlir::isInvariantAccess(AffineStoreOp loadOp, AffineForOp);
+
 DenseSet<Value> mlir::getInvariantAccesses(Value iv, ArrayRef<Value> indices) {
   DenseSet<Value> res;
   for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
@@ -213,7 +247,7 @@ DenseSet<Value> mlir::getInvariantAccesses(Value iv, ArrayRef<Value> indices) {
 /// Returns false if the MemRef has a non-identity layoutMap or more than 1
 /// layoutMap. This is conservative.
 ///
-// TODO(ntv): check strides.
+// TODO: check strides.
 template <typename LoadOrStoreOp>
 static bool isContiguousAccess(Value iv, LoadOrStoreOp memoryOp,
                                int *memRefDim) {
@@ -224,8 +258,7 @@ static bool isContiguousAccess(Value iv, LoadOrStoreOp memoryOp,
   auto memRefType = memoryOp.getMemRefType();
 
   auto layoutMap = memRefType.getAffineMaps();
-  // TODO(ntv): remove dependence on Builder once we support non-identity
-  // layout map.
+  // TODO: remove dependence on Builder once we support non-identity layout map.
   Builder b(memoryOp.getContext());
   if (layoutMap.size() >= 2 ||
       (layoutMap.size() == 1 &&
@@ -291,8 +324,7 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
 
   // No vectorization across unknown regions.
   auto regions = matcher::Op([](Operation &op) -> bool {
-    return op.getNumRegions() != 0 &&
-           !(isa<AffineIfOp>(op) || isa<AffineForOp>(op));
+    return op.getNumRegions() != 0 && !isa<AffineIfOp, AffineForOp>(op);
   });
   SmallVector<NestedMatch, 8> regionsMatched;
   regions.match(forOp, &regionsMatched);
@@ -315,7 +347,7 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
     auto store = dyn_cast<AffineStoreOp>(op);
     // Only scalar types are considered vectorizable, all load/store must be
     // vectorizable for a loop to qualify as vectorizable.
-    // TODO(ntv): ponder whether we want to be more general here.
+    // TODO: ponder whether we want to be more general here.
     bool vector = load ? isVectorElement(load) : isVectorElement(store);
     if (vector) {
       return false;
@@ -346,8 +378,8 @@ bool mlir::isVectorizableLoopBody(AffineForOp loop,
 /// Checks whether SSA dominance would be violated if a for op's body
 /// operations are shifted by the specified shifts. This method checks if a
 /// 'def' and all its uses have the same shift factor.
-// TODO(mlir-team): extend this to check for memory-based dependence violation
-// when we have the support.
+// TODO: extend this to check for memory-based dependence violation when we have
+// the support.
 bool mlir::isOpwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
   auto *forBody = forOp.getBody();
   assert(shifts.size() == forBody->getOperations().size());

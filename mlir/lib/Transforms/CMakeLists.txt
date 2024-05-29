@@ -3,6 +3,7 @@ add_subdirectory(Utils)
 add_mlir_library(MLIRTransforms
   BufferPlacement.cpp
   Canonicalizer.cpp
+  CopyRemoval.cpp
   CSE.cpp
   DialectConversion.cpp
   Inliner.cpp
@@ -19,6 +20,8 @@ add_mlir_library(MLIRTransforms
   SymbolDCE.cpp
   ViewOpGraph.cpp
   ViewRegionGraph.cpp
+  HigherOrderPolyhedralOpt.cpp
+  BlisPolyhedralOpt.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Transforms
@@ -26,14 +29,14 @@ add_mlir_library(MLIRTransforms
   DEPENDS
   MLIRStandardOpsIncGen
   MLIRTransformsPassIncGen
-  )
 
-target_link_libraries(MLIRTransforms
-  PUBLIC
+  LINK_LIBS PUBLIC
   MLIRAffineOps
   MLIRAnalysis
+  MLIRCopyOpInterface
+  MLIRLinalgOps
   MLIRLoopLikeInterface
-  MLIRLoopOps
+  MLIRSCF
   MLIRPass
   MLIRTransformUtils
   MLIRVector

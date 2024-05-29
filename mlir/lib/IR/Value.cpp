@@ -77,7 +77,11 @@ Operation *Value::getDefiningOp() const {
 Location Value::getLoc() const {
   if (auto *op = getDefiningOp())
     return op->getLoc();
-  return UnknownLoc::get(getContext());
+
+  // Use the location of the parent operation if this is a block argument.
+  // TODO: Should we just add locations to block arguments?
+  Operation *parentOp = cast<BlockArgument>().getOwner()->getParentOp();
+  return parentOp ? parentOp->getLoc() : UnknownLoc::get(getContext());
 }
 
 /// Return the Region in which this Value is defined.
@@ -85,6 +89,13 @@ Region *Value::getParentRegion() {
   if (auto *op = getDefiningOp())
     return op->getParentRegion();
   return cast<BlockArgument>().getOwner()->getParent();
+}
+
+/// Return the Block in which this Value is defined.
+Block *Value::getParentBlock() {
+  if (Operation *op = getDefiningOp())
+    return op->getBlock();
+  return cast<BlockArgument>().getOwner();
 }
 
 //===----------------------------------------------------------------------===//
@@ -132,6 +143,13 @@ void Value::replaceUsesWithIf(Value newValue,
   for (OpOperand &use : llvm::make_early_inc_range(getUses()))
     if (shouldReplace(use))
       use.set(newValue);
+}
+
+/// Returns true if the value is used outside of the given block.
+bool Value::isUsedOutsideOfBlock(Block *block) {
+  return llvm::any_of(getUsers(), [block](Operation *user) {
+    return user->getBlock() != block;
+  });
 }
 
 //===--------------------------------------------------------------------===//
@@ -234,4 +252,15 @@ OpaqueValue::OpaqueValue(Value value) : impl(value.getAsOpaquePointer()) {}
 /// Implicit conversion back to 'Value'.
 OpaqueValue::operator Value() const {
   return Value::getFromOpaquePointer(impl);
+}
+
+// Replaces all uses of `orig` with `replacement` except if the user is listed
+// in `exceptions`.
+void mlir::replaceAllUsesExcept(
+    Value orig, Value replacement,
+    const SmallPtrSetImpl<Operation *> &exceptions) {
+  for (auto &use : llvm::make_early_inc_range(orig.getUses())) {
+    if (exceptions.count(use.getOwner()) == 0)
+      use.set(replacement);
+  }
 }

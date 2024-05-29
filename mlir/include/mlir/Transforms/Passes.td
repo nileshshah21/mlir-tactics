@@ -174,6 +174,11 @@ def Canonicalizer : Pass<"canonicalize"> {
   let constructor = "mlir::createCanonicalizerPass()";
 }
 
+def CopyRemoval : FunctionPass<"copy-removal"> {
+  let summary = "Remove the redundant copies from input IR";
+  let constructor = "mlir::createCopyRemovalPass()";
+}
+
 def CSE : Pass<"cse"> {
   let summary = "Eliminate common sub-expressions";
   let description = [{
@@ -399,6 +404,16 @@ def SymbolDCE : Pass<"symbol-dce"> {
     information on `Symbols`.
   }];
   let constructor = "mlir::createSymbolDCEPass()";
+}
+
+def HigherOrderPolyhedralOpt : FunctionPass<"hopt"> {
+  let summary = "Run higher order polyhedral optimization";
+  let constructor = "mlir::createHigherOrderPolyhedralOptPass()"; 
+}
+
+def BlisPolyhedralOpt : FunctionPass<"blis"> {
+  let summary = "Run the Blis optimization";
+  let constructor = "mlir::createBlisPolyhedralOptPass()";
 }
 
 #endif // MLIR_TRANSFORMS_PASSES

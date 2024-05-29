@@ -15,11 +15,9 @@
 #define LLVM_LIB_CODEGEN_SELECTIONDAG_STATEPOINTLOWERING_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
-#include "llvm/CodeGen/ValueTypes.h"
 #include <cassert>
 
 namespace llvm {
@@ -104,6 +102,10 @@ public:
            "out of bounds");
     return AllocatedStackSlots.test(Offset);
   }
+
+  /// For each statepoint keep mapping from original derived pointer to
+  /// the statepoint node result defining its new value.
+  DenseMap<const Value *, SDValue> DerivedPtrMap;
 
 private:
   /// Maps pre-relocation value (gc pointer directly incoming into statepoint)

@@ -15,7 +15,7 @@
 
 include "mlir/Dialect/Affine/IR/AffineOpsBase.td"
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
-include "mlir/Interfaces/SideEffects.td"
+include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir/Interfaces/ViewLikeInterface.td"
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
@@ -61,29 +61,50 @@ def Linalg_RangeOp :
   let assemblyFormat = "$min `:` $max `:` $step attr-dict `:` type(results)";
 }
 
-class Linalg_ReshapeLikeOp<string mnemonic> :
-    Linalg_Op<mnemonic, [NoSideEffect]> {
+class Linalg_ReshapeLikeOp<string mnemonic, list<OpTrait> traits = []> :
+    Linalg_Op<mnemonic, !listconcat(traits, [NoSideEffect])> {
   let builders = [
-    // Builder for a contracting reshape whose result type is computed from
+    // Builders for a contracting reshape whose result type is computed from
     // `src` and `reassociation`.
     OpBuilder<"OpBuilder &b, OperationState &result, Value src, "
-    "ArrayRef<ArrayRef<AffineExpr>> reassociation, "
-    "ArrayRef<NamedAttribute> attrs = {}">,
-    // Builder for a reshape whose result type is passed explicitly. This may be
-    // either a contracting or expanding reshape.
-    OpBuilder<"OpBuilder &b, OperationState &result, Type resultType, Value src,"
-    "ArrayRef<ArrayRef<AffineExpr>> reassociation, "
-    "ArrayRef<NamedAttribute> attrs = {}">];
+              "ArrayRef<ReassociationExprs> reassociation, "
+              "ArrayRef<NamedAttribute> attrs = {}">,
+    OpBuilder<"OpBuilder &b, OperationState &result, Value src, "
+              "ArrayRef<ReassociationIndices> reassociation, "
+              "ArrayRef<NamedAttribute> attrs = {}", [{
+      auto reassociationMaps =
+          convertReassociationIndicesToMaps(b, reassociation);
+      build(b, result, src, reassociationMaps, attrs);
+    }]>,
+
+    // Builders for a reshape whose result type is passed explicitly. This may
+    // be either a contracting or expanding reshape.
+    OpBuilder<"OpBuilder &b, OperationState &result, Type resultType, "
+              "Value src, ArrayRef<ReassociationExprs> reassociation, "
+              "ArrayRef<NamedAttribute> attrs = {}">,
+    OpBuilder<"OpBuilder &b, OperationState &result, Type resultType, "
+              "Value src, ArrayRef<ReassociationIndices> reassociation, "
+              "ArrayRef<NamedAttribute> attrs = {}", [{
+      auto reassociationMaps =
+          convertReassociationIndicesToMaps(b, reassociation);
+      build(b, result, src, reassociationMaps, attrs);
+    }]>
+  ];
 
   code commonExtraClassDeclaration = [{
     static StringRef getReassociationAttrName() { return "reassociation"; }
+    SmallVector<AffineMap, 4> getReassociationMaps() {
+      return llvm::to_vector<4>(llvm::map_range(reassociation(), [
+      ](Attribute a) { return a.cast<AffineMapAttr>().getValue(); }));
+    }
   }];
   let assemblyFormat = [{
     $src $reassociation attr-dict `:` type($src) `into` type(results)
   }];
 }
 
-def Linalg_ReshapeOp : Linalg_ReshapeLikeOp<"reshape">,
+def Linalg_ReshapeOp : Linalg_ReshapeLikeOp<"reshape",
+    [DeclareOpInterfaceMethods<ViewLikeOpInterface>]>,
     Arguments<(ins AnyStridedMemRef:$src, AffineMapArrayAttr:$reassociation)>,
     Results<(outs AnyStridedMemRef:$result)> {
   let summary = "linalg.reshape produces a new view into the operand view";
@@ -111,6 +132,13 @@ def Linalg_ReshapeOp : Linalg_ReshapeLikeOp<"reshape">,
     rank to obtain the memref with the smaller rank. In the case of a dimension
     expansion, the reassociation maps can be interpreted as inverse maps.
 
+    The result memref type of a reshape when dimensions are collapsed
+    (operand memref type when dimensions are expanded) can be
+    zero-ranked if the operand memref type (or the result memref type
+    when dimensions are expanded) is statically shaped with all
+    dimensions being unit extent. In such cases the reassociation map
+    is empty.
+
     Examples:
 
     ```mlir
@@ -130,6 +158,7 @@ def Linalg_ReshapeOp : Linalg_ReshapeLikeOp<"reshape">,
     MemRefType getResultType() { return result().getType().cast<MemRefType>(); }
   }];
   let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def Linalg_TensorReshapeOp : Linalg_ReshapeLikeOp<"tensor_reshape">,
@@ -152,6 +181,13 @@ def Linalg_TensorReshapeOp : Linalg_ReshapeLikeOp<"tensor_reshape">,
     rank to obtain the tensor with the smaller rank. In the case of a dimension
     expansion, the reassociation maps can be interpreted as inverse maps.
 
+    The result tensor type of a reshape when dimensions are collapsed
+    (operand tensor type when dimensions are expanded) can be
+    zero-ranked if the operand tensor type (or the result tensor type
+    when dimensions are expanded) is statically shaped with all
+    dimensions being unit extent. In such cases the reassociation map
+    is empty.
+
     Examples:
 
     ```mlir
@@ -173,11 +209,9 @@ def Linalg_TensorReshapeOp : Linalg_ReshapeLikeOp<"tensor_reshape">,
     RankedTensorType getResultType() {
       return result().getType().cast<RankedTensorType>();
     }
-    SmallVector<AffineMap, 4> getReassociationMaps() {
-      return llvm::to_vector<4>(llvm::map_range(reassociation(),
-        [](Attribute a) { return a.cast<AffineMapAttr>().getValue(); }));
-    }
   }];
+  let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def Linalg_SliceOp : Linalg_Op<"slice", [
@@ -279,6 +313,9 @@ def Linalg_TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
       return emitOpError("expected a permutation map");
     if (permutation().getNumDims() != getShapedType().getRank())
       return emitOpError("expected a permutation map of same rank as the view");
+    auto sourceType = getShapedType();
+    if (sourceType.hasStaticShape())
+      return emitOpError("expect operand with a non-static shape");
     return success();
   }];
 
@@ -305,5 +342,71 @@ def Linalg_YieldOp : Linalg_Op<"yield", [NoSideEffect, Terminator]>,
     ```
   }];
 }
+
+def Linalg_Im2ColOp : Linalg_Op<"imtocol">,
+  Arguments<(ins AnyStridedMemRef:$img, AnyStridedMemRef: $dest,
+             OptionalAttr<I64ArrayAttr>:$block,
+             OptionalAttr<I64ArrayAttr>:$stride,
+             OptionalAttr<I64ArrayAttr>:$padding)>/*,
+  Results<(outs AnyStridedMemRef)>*/ {
+  
+  let summary = "`imtocol` produces a new strided memref"; 
+  
+  let description = [{`linalg.im2col`}];
+
+  let builders = [OpBuilder<
+    "OpBuilder &b, OperationState &result, "
+    "Value img, Value dest, ArrayRef<NamedAttribute> attrs = {}">];
+  
+  let extraClassDeclaration = [{
+    int64_t getBlockDimAtPos(unsigned i) {
+      if (!block().hasValue()) 
+        return 1;
+      assert(block()->size() >= 2);
+      // if we don't have the channel 
+      // return 1.
+      if (block()->size() == 2 && i == 2)
+        return 1;
+      return block()->getValue()[i].  
+        cast<IntegerAttr>().getValue().getSExtValue();
+    }
+    int64_t getBlockChannel() {
+      return getBlockDimAtPos(2);
+    }
+    int64_t getBlockHeight() {
+      return getBlockDimAtPos(0);
+    }
+    int64_t getBlockWidth() {
+      return getBlockDimAtPos(1);
+    }
+    int64_t getPaddingImpl(unsigned i) {
+      if (!padding().hasValue())
+        return 0;
+      assert(padding()->size() == 2);
+      return padding()->getValue()[i].
+        cast<IntegerAttr>().getValue().getSExtValue();
+    }
+    int64_t getPaddingHeight() {
+      return getPaddingImpl(0);
+    }
+    int64_t getPaddingWidth() {
+      return getPaddingImpl(1); 
+    }
+    int64_t getStrideImpl(unsigned i) {
+      if (!stride().hasValue())
+        return 1;
+      assert(stride()->size() == 2);
+      return stride()->getValue()[i].
+        cast<IntegerAttr>().getValue().getSExtValue();
+    }
+    int64_t getStrideHeight() {
+      return getStrideImpl(0);
+    }
+    int64_t getStrideWidth() {
+      return getStrideImpl(1);
+    } 
+  }];
+}
+ 
 
 #endif // LINALG_OPS

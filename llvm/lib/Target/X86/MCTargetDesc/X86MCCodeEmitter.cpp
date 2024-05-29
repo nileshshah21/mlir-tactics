@@ -78,7 +78,8 @@ private:
   void emitMemModRMByte(const MCInst &MI, unsigned Op, unsigned RegOpcodeField,
                         uint64_t TSFlags, bool HasREX, uint64_t StartByte,
                         raw_ostream &OS, SmallVectorImpl<MCFixup> &Fixups,
-                        const MCSubtargetInfo &STI) const;
+                        const MCSubtargetInfo &STI,
+                        bool ForceSIB = false) const;
 
   bool emitPrefixImpl(unsigned &CurOp, const MCInst &MI,
                       const MCSubtargetInfo &STI, raw_ostream &OS) const;
@@ -163,17 +164,20 @@ static MCFixupKind getImmFixupKind(uint64_t TSFlags) {
 /// \returns true if the specified instruction has a 16-bit memory operand.
 static bool is16BitMemOperand(const MCInst &MI, unsigned Op,
                               const MCSubtargetInfo &STI) {
-  const MCOperand &BaseReg = MI.getOperand(Op + X86::AddrBaseReg);
-  const MCOperand &IndexReg = MI.getOperand(Op + X86::AddrIndexReg);
+  const MCOperand &Base = MI.getOperand(Op + X86::AddrBaseReg);
+  const MCOperand &Index = MI.getOperand(Op + X86::AddrIndexReg);
   const MCOperand &Disp = MI.getOperand(Op + X86::AddrDisp);
 
-  if (STI.hasFeature(X86::Mode16Bit) && BaseReg.getReg() == 0 && Disp.isImm() &&
-      Disp.getImm() < 0x10000)
+  unsigned BaseReg = Base.getReg();
+  unsigned IndexReg = Index.getReg();
+
+  if (STI.hasFeature(X86::Mode16Bit) && BaseReg == 0 && IndexReg == 0 &&
+      Disp.isImm() && Disp.getImm() < 0x10000)
     return true;
-  if ((BaseReg.getReg() != 0 &&
-       X86MCRegisterClasses[X86::GR16RegClassID].contains(BaseReg.getReg())) ||
-      (IndexReg.getReg() != 0 &&
-       X86MCRegisterClasses[X86::GR16RegClassID].contains(IndexReg.getReg())))
+  if ((BaseReg != 0 &&
+       X86MCRegisterClasses[X86::GR16RegClassID].contains(BaseReg)) ||
+      (IndexReg != 0 &&
+       X86MCRegisterClasses[X86::GR16RegClassID].contains(IndexReg)))
     return true;
   return false;
 }
@@ -382,7 +386,8 @@ void X86MCCodeEmitter::emitMemModRMByte(const MCInst &MI, unsigned Op,
                                         uint64_t TSFlags, bool HasREX,
                                         uint64_t StartByte, raw_ostream &OS,
                                         SmallVectorImpl<MCFixup> &Fixups,
-                                        const MCSubtargetInfo &STI) const {
+                                        const MCSubtargetInfo &STI,
+                                        bool ForceSIB) const {
   const MCOperand &Disp = MI.getOperand(Op + X86::AddrDisp);
   const MCOperand &Base = MI.getOperand(Op + X86::AddrBaseReg);
   const MCOperand &Scale = MI.getOperand(Op + X86::AddrScaleAmt);
@@ -395,7 +400,8 @@ void X86MCCodeEmitter::emitMemModRMByte(const MCInst &MI, unsigned Op,
       BaseReg == X86::EIP) { // [disp32+rIP] in X86-64 mode
     assert(STI.hasFeature(X86::Mode64Bit) &&
            "Rip-relative addressing requires 64-bit mode");
-    assert(IndexReg.getReg() == 0 && "Invalid rip-relative address");
+    assert(IndexReg.getReg() == 0 && !ForceSIB &&
+           "Invalid rip-relative address");
     emitByte(modRMByte(0, RegOpcodeField, 5), OS);
 
     unsigned Opcode = MI.getOpcode();
@@ -495,6 +501,7 @@ void X86MCCodeEmitter::emitMemModRMByte(const MCInst &MI, unsigned Op,
       // This is the [REG]+disp16 case.
       emitByte(modRMByte(2, RegOpcodeField, RMfield), OS);
     } else {
+      assert(IndexReg.getReg() == 0 && "Unexpected index register!");
       // There is no BaseReg; this is the plain [disp16] case.
       emitByte(modRMByte(0, RegOpcodeField, 6), OS);
     }
@@ -510,7 +517,7 @@ void X86MCCodeEmitter::emitMemModRMByte(const MCInst &MI, unsigned Op,
   // 2-7) and absolute references.
 
   if ( // The SIB byte must be used if there is an index register.
-      IndexReg.getReg() == 0 &&
+      !ForceSIB && IndexReg.getReg() == 0 &&
       // The SIB byte must be used if the base is ESP/RSP/R12, all of which
       // encode to an R/M value of 4, which indicates that a SIB byte is
       // present.
@@ -883,9 +890,11 @@ void X86MCCodeEmitter::emitVEXOpcodePrefix(int MemOperand, const MCInst &MI,
   switch (TSFlags & X86II::FormMask) {
   default:
     llvm_unreachable("Unexpected form in emitVEXOpcodePrefix!");
+  case X86II::MRM_C0:
   case X86II::RawFrm:
   case X86II::PrefixByte:
     break;
+  case X86II::MRMDestMemFSIB:
   case X86II::MRMDestMem: {
     // MRMDestMem instructions forms:
     //  MemAddr, src1(ModR/M)
@@ -916,6 +925,7 @@ void X86MCCodeEmitter::emitVEXOpcodePrefix(int MemOperand, const MCInst &MI,
     EVEX_R2 = ~(RegEnc >> 4) & 1;
     break;
   }
+  case X86II::MRMSrcMemFSIB:
   case X86II::MRMSrcMem: {
     // MRMSrcMem instructions forms:
     //  src1(ModR/M), MemAddr
@@ -1097,6 +1107,15 @@ void X86MCCodeEmitter::emitVEXOpcodePrefix(int MemOperand, const MCInst &MI,
       EncodeRC = true;
     break;
   }
+  case X86II::MRMr0: {
+    // MRMr0 instructions forms:
+    //  11:rrr:000
+    //  dst(ModR/M)
+    unsigned RegEnc = getX86RegEncoding(MI, CurOp++);
+    VEX_R = ~(RegEnc >> 3) & 1;
+    EVEX_R2 = ~(RegEnc >> 4) & 1;
+    break;
+  }
   case X86II::MRM0r:
   case X86II::MRM1r:
   case X86II::MRM2r:
@@ -1267,6 +1286,11 @@ bool X86MCCodeEmitter::emitREXPrefix(int MemOperand, const MCInst &MI,
     case X86II::MRM7r:
       REX |= isREXExtendedReg(MI, CurOp++) << 0; // REX.B
       break;
+    case X86II::MRMr0:
+      REX |= isREXExtendedReg(MI, CurOp++) << 2; // REX.R
+      break;
+    case X86II::MRMDestMemFSIB:
+      llvm_unreachable("FSIB format never need REX prefix!");
     }
     if (REX && UsesHighByteReg)
       report_fatal_error(
@@ -1481,6 +1505,7 @@ void X86MCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
     CurOp = SrcRegNum + 1;
     break;
   }
+  case X86II::MRMDestMemFSIB:
   case X86II::MRMDestMem: {
     emitByte(BaseOpcode, OS);
     unsigned SrcRegNum = CurOp + X86::AddrNumOperands;
@@ -1491,8 +1516,9 @@ void X86MCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
     if (HasVEX_4V) // Skip 1st src (which is encoded in VEX_VVVV)
       ++SrcRegNum;
 
+    bool ForceSIB = (Form == X86II::MRMDestMemFSIB);
     emitMemModRMByte(MI, CurOp, getX86RegNum(MI.getOperand(SrcRegNum)), TSFlags,
-                     HasREX, StartByte, OS, Fixups, STI);
+                     HasREX, StartByte, OS, Fixups, STI, ForceSIB);
     CurOp = SrcRegNum + 1;
     break;
   }
@@ -1553,6 +1579,7 @@ void X86MCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
                      getX86RegNum(MI.getOperand(FirstOp)), OS);
     break;
   }
+  case X86II::MRMSrcMemFSIB:
   case X86II::MRMSrcMem: {
     unsigned FirstMemOp = CurOp + 1;
 
@@ -1564,8 +1591,9 @@ void X86MCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
 
     emitByte(BaseOpcode, OS);
 
+    bool ForceSIB = (Form == X86II::MRMSrcMemFSIB);
     emitMemModRMByte(MI, FirstMemOp, getX86RegNum(MI.getOperand(CurOp)),
-                     TSFlags, HasREX, StartByte, OS, Fixups, STI);
+                     TSFlags, HasREX, StartByte, OS, Fixups, STI, ForceSIB);
     CurOp = FirstMemOp + X86::AddrNumOperands;
     if (HasVEX_I8Reg)
       I8RegNum = getX86RegEncoding(MI, CurOp++);
@@ -1637,6 +1665,10 @@ void X86MCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
     emitRegModRMByte(MI.getOperand(CurOp++),
                      (Form == X86II::MRMXr) ? 0 : Form - X86II::MRM0r, OS);
     break;
+  case X86II::MRMr0:
+    emitByte(BaseOpcode, OS);
+    emitByte(modRMByte(3, getX86RegNum(MI.getOperand(CurOp++)),0), OS);
+    break;
 
   case X86II::MRMXmCC: {
     unsigned FirstMemOp = CurOp;
@@ -1668,6 +1700,18 @@ void X86MCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
                      (Form == X86II::MRMXm) ? 0 : Form - X86II::MRM0m, TSFlags,
                      HasREX, StartByte, OS, Fixups, STI);
     CurOp += X86::AddrNumOperands;
+    break;
+
+  case X86II::MRM0X:
+  case X86II::MRM1X:
+  case X86II::MRM2X:
+  case X86II::MRM3X:
+  case X86II::MRM4X:
+  case X86II::MRM5X:
+  case X86II::MRM6X:
+  case X86II::MRM7X:
+    emitByte(BaseOpcode, OS);
+    emitByte(0xC0 + ((Form - X86II::MRM0X) << 3), OS);
     break;
 
   case X86II::MRM_C0:

@@ -49,7 +49,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/TimeProfiler.h"
 #include "llvm/Support/TypeName.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <cassert>
 #include <cstring>
@@ -504,15 +503,16 @@ public:
 
     for (unsigned Idx = 0, Size = Passes.size(); Idx != Size; ++Idx) {
       auto *P = Passes[Idx].get();
-      if (DebugLogging)
-        dbgs() << "Running pass: " << P->name() << " on " << IR.getName()
-               << "\n";
 
       // Check the PassInstrumentation's BeforePass callbacks before running the
       // pass, skip its execution completely if asked to (callback returns
       // false).
       if (!PI.runBeforePass<IRUnitT>(*P, IR))
         continue;
+
+      if (DebugLogging)
+        dbgs() << "Running pass: " << P->name() << " on " << IR.getName()
+               << "\n";
 
       PreservedAnalyses PassPA;
       {
@@ -558,6 +558,8 @@ public:
 
     Passes.emplace_back(new PassModelT(std::move(Pass)));
   }
+
+  static bool isRequired() { return true; }
 
 private:
   using PassConceptT =
@@ -798,6 +800,16 @@ public:
                                     PreservedAnalyses, Invalidator>;
 
     return &static_cast<ResultModelT *>(ResultConcept)->Result;
+  }
+
+  /// Verify that the given Result cannot be invalidated, assert otherwise.
+  template <typename PassT>
+  void verifyNotInvalidated(IRUnitT &IR, typename PassT::Result *Result) const {
+    PreservedAnalyses PA = PreservedAnalyses::none();
+    SmallDenseMap<AnalysisKey *, bool, 8> IsResultInvalidated;
+    Invalidator Inv(IsResultInvalidated, AnalysisResults);
+    assert(!Result->invalidate(IR, PA, Inv) &&
+           "Cached result cannot be invalidated");
   }
 
   /// Register an analysis pass with the manager.
@@ -1049,7 +1061,16 @@ extern template class InnerAnalysisManagerProxy<FunctionAnalysisManager,
 ///
 /// This proxy only exposes the const interface of the outer analysis manager,
 /// to indicate that you cannot cause an outer analysis to run from within an
-/// inner pass.  Instead, you must rely on the \c getCachedResult API.
+/// inner pass.  Instead, you must rely on the \c getCachedResult API.  This is
+/// due to keeping potential future concurrency in mind. To give an example,
+/// running a module analysis before any function passes may give a different
+/// result than running it in a function pass. Both may be valid, but it would
+/// produce non-deterministic results. GlobalsAA is a good analysis example,
+/// because the cached information has the mod/ref info for all memory for each
+/// function at the time the analysis was computed. The information is still
+/// valid after a function transformation, but it may be *different* if
+/// recomputed after that transform. GlobalsAA is never invalidated.
+
 ///
 /// This proxy doesn't manage invalidation in any way -- that is handled by the
 /// recursive return path of each layer of the pass manager.  A consequence of
@@ -1065,7 +1086,24 @@ public:
   public:
     explicit Result(const AnalysisManagerT &OuterAM) : OuterAM(&OuterAM) {}
 
-    const AnalysisManagerT &getManager() const { return *OuterAM; }
+    /// Get a cached analysis. If the analysis can be invalidated, this will
+    /// assert.
+    template <typename PassT, typename IRUnitTParam>
+    typename PassT::Result *getCachedResult(IRUnitTParam &IR) const {
+      typename PassT::Result *Res =
+          OuterAM->template getCachedResult<PassT>(IR);
+      if (Res)
+        OuterAM->template verifyNotInvalidated<PassT>(IR, Res);
+      return Res;
+    }
+
+    /// Method provided for unit testing, not intended for general use.
+    template <typename PassT, typename IRUnitTParam>
+    bool cachedResultExists(IRUnitTParam &IR) const {
+      typename PassT::Result *Res =
+          OuterAM->template getCachedResult<PassT>(IR);
+      return Res != nullptr;
+    }
 
     /// When invalidation occurs, remove any registered invalidation events.
     bool invalidate(
@@ -1232,6 +1270,8 @@ public:
     PA.preserve<FunctionAnalysisManagerModuleProxy>();
     return PA;
   }
+
+  static bool isRequired() { return true; }
 
 private:
   FunctionPassT Pass;

@@ -32,6 +32,9 @@ std::unique_ptr<Pass> createBufferPlacementPass();
 /// Creates an instance of the Canonicalizer pass.
 std::unique_ptr<Pass> createCanonicalizerPass();
 
+/// Create a pass that removes unnecessary Copy operations.
+std::unique_ptr<Pass> createCopyRemovalPass();
+
 /// Creates a pass to perform common sub expression elimination.
 std::unique_ptr<Pass> createCSEPass();
 
@@ -54,7 +57,7 @@ std::unique_ptr<OperationPass<FuncOp>> createPipelineDataTransferPass();
 /// Lowers affine control flow operations (ForStmt, IfStmt and AffineApplyOp)
 /// to equivalent lower-level constructs (flow of basic blocks and arithmetic
 /// primitives).
-std::unique_ptr<OperationPass<FuncOp>> createLowerAffinePass();
+std::unique_ptr<Pass> createLowerAffinePass();
 
 /// Creates a pass that transforms perfectly nested loops with independent
 /// bounds into a single loop.
@@ -86,6 +89,10 @@ std::unique_ptr<Pass> createSCCPPass();
 /// Creates a pass which delete symbol operations that are unreachable. This
 /// pass may *only* be scheduled on an operation that defines a SymbolTable.
 std::unique_ptr<Pass> createSymbolDCEPass();
+
+/// Hop.
+std::unique_ptr<OperationPass<FuncOp>> createHigherOrderPolyhedralOptPass();
+std::unique_ptr<OperationPass<FuncOp>> createBlisPolyhedralOptPass();
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H

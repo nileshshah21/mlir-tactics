@@ -118,6 +118,10 @@ public:
   AffineExpr replaceDimsAndSymbols(ArrayRef<AffineExpr> dimReplacements,
                                    ArrayRef<AffineExpr> symReplacements) const;
 
+  /// Replace symbols[0 .. numDims - 1] by
+  /// symbols[shift .. shift + numDims - 1].
+  AffineExpr shiftSymbols(unsigned numSymbols, unsigned shift) const;
+
   AffineExpr operator+(int64_t v) const;
   AffineExpr operator+(AffineExpr other) const;
   AffineExpr operator-() const;
@@ -259,6 +263,12 @@ void bindDims(MLIRContext *ctx, AffineExprTy &e, AffineExprTy2 &... exprs) {
   e = getAffineDimExpr(N, ctx);
   bindDims<N + 1, AffineExprTy2 &...>(ctx, exprs...);
 }
+
+template <typename AffineExprTy>
+void bindDims(MLIRContext *ctx, AffineExprTy &e, int N) {
+  e = getAffineDimExpr(N, ctx);
+}
+
 } // namespace detail
 
 /// Bind a list of AffineExpr references to DimExpr at positions:
@@ -266,6 +276,11 @@ void bindDims(MLIRContext *ctx, AffineExprTy &e, AffineExprTy2 &... exprs) {
 template <typename... AffineExprTy>
 void bindDims(MLIRContext *ctx, AffineExprTy &... exprs) {
   detail::bindDims<0>(ctx, exprs...);
+}
+
+template <typename AffineExprTy>
+void bindDims(MLIRContext *ctx, AffineExprTy &expr, int pos) {
+  detail::bindDims(ctx, expr, pos);
 }
 
 } // namespace mlir

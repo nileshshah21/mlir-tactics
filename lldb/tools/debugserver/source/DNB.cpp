@@ -1392,10 +1392,17 @@ const char *DNBGetDeploymentInfo(nub_process_t pid,
                                  uint32_t& minor_version,
                                  uint32_t& patch_version) {
   MachProcessSP procSP;
-  if (GetProcessSP(pid, procSP))
-    return procSP->GetDeploymentInfo(lc, load_command_address,
-                                     major_version, minor_version,
-                                     patch_version);
+  if (GetProcessSP(pid, procSP)) {
+    // FIXME: This doesn't return the correct result when xctest (a
+    // macOS binary) is loaded with the macCatalyst dyld platform
+    // override. The image info corrects for this, but qProcessInfo
+    // will return what is in the binary.
+    auto info = procSP->GetDeploymentInfo(lc, load_command_address);
+    major_version = info.major_version;
+    minor_version = info.minor_version;
+    patch_version = info.patch_version;
+    return procSP->GetPlatformString(info.platform);
+  }
   return nullptr;
 }
 

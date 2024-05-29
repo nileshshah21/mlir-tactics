@@ -58,22 +58,25 @@ def parse_args():
             help="Display all commandlines and output",
             action="store_true")
     format_group.add_argument("-o", "--output",
-            dest="reports",
-            action="append",
             type=lit.reports.JsonReport,
-            default=[],
             help="Write test results to the provided path",
             metavar="PATH")
     format_group.add_argument("--no-progress-bar",
             dest="useProgressBar",
             help="Do not use curses based progress bar",
             action="store_false")
-    format_group.add_argument("--show-unsupported",
-            help="Show unsupported tests",
-            action="store_true")
-    format_group.add_argument("--show-xfail",
-            help="Show tests that were expected to fail",
-            action="store_true")
+
+    # Note: this does not generate flags for user-defined result codes.
+    success_codes = [c for c in lit.Test.ResultCode.all_codes()
+                     if not c.isFailure]
+    for code in success_codes:
+        format_group.add_argument(
+            "--show-{}".format(code.name.lower()),
+            dest="shown_codes",
+            help="Show {} tests ({})".format(code.label.lower(), code.name),
+            action="append_const",
+            const=code,
+            default=[])
 
     execution_group = parser.add_argument_group("Test Execution")
     execution_group.add_argument("--path",
@@ -102,10 +105,7 @@ def parse_args():
             help="Don't execute any tests (assume PASS)",
             action="store_true")
     execution_group.add_argument("--xunit-xml-output",
-            dest="reports",
-            action="append",
             type=lit.reports.XunitReport,
-            default=[],
             help="Write XUnit-compatible XML test reports to the specified file")
     execution_group.add_argument("--timeout",
             dest="maxIndividualTestTime",
@@ -163,6 +163,9 @@ def parse_args():
     debug_group.add_argument("--show-tests",
             help="Show all discovered tests and exit",
             action="store_true")
+    debug_group.add_argument("--show-used-features",
+            help="Show all features used in the test suite (in XFAIL, UNSUPPORTED and REQUIRES) and exit",
+            action="store_true")
 
     # LIT is special: environment variables override command line arguments.
     env_args = shlex.split(os.environ.get("LIT_OPTS", ""))
@@ -189,6 +192,8 @@ def parse_args():
         opts.shard = (opts.runShard, opts.numShards)
     else:
         opts.shard = None
+
+    opts.reports = filter(None, [opts.output, opts.xunit_xml_output])
 
     return opts
 

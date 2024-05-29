@@ -1,4 +1,25 @@
+//ods_def<MatmulOp>:
+//def matmul(A: f32(M, K), B: f32(K, N)) -> (C: f32(M, N)) {
+//  C(m, n) = std_addf<k>(std_mulf(A(m, k), B(k, n)));
+//}
+
+//ods_def<MatvecOp>:
+//def matvec(A: f32(M, N), y: f32(N)) -> (x: f32(M)) {
+//  x(m) = std_addf<n>(std_mulf(A(m, n), y(n)));
+//}
+
+ods_def<DotOp>:
+def dot(A: f32(M), B: f32(M)) -> (C: f32()) {
+  C() = std_addf<m>(std_mulf(A(m), B(m)));
+}
+
 ods_def<BatchMatmulOp>:
 def batch_matmul(A: f32(Batch, M, K), B: f32(Batch, K, N)) -> (C: f32(Batch, M, N)) {
   C(b, m, n) = std_addf<k>(std_mulf(A(b, m, k), B(b, k, n)));
+}
+
+ods_def<ConvNCHWOp>:
+def conv_2d_nchw(I: f32(N, C, H, W), K: f32(F, C, KH, KW)) -> (O: f32(N, F, H, W)) {
+  O(n, f, h, w) = std_addf<kh, kw>(std_mulf(
+    I(n, c, h + kh, w + kw), K(f, c, kh, kw)));
 }

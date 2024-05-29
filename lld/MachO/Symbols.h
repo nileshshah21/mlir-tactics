@@ -11,6 +11,7 @@
 
 #include "InputSection.h"
 #include "Target.h"
+#include "lld/Common/ErrorHandler.h"
 #include "lld/Common/Strings.h"
 #include "llvm/Object/Archive.h"
 
@@ -35,13 +36,22 @@ public:
     DefinedKind,
     UndefinedKind,
     DylibKind,
+    LazyKind,
   };
+
+  virtual ~Symbol() {}
 
   Kind kind() const { return static_cast<Kind>(symbolKind); }
 
   StringRef getName() const { return {name.data, name.size}; }
 
   uint64_t getVA() const;
+
+  uint64_t getFileOffset() const;
+
+  virtual bool isWeakDef() const { llvm_unreachable("cannot be weak"); }
+
+  uint32_t gotIndex = UINT32_MAX;
 
 protected:
   Symbol(Kind k, StringRefZ name) : symbolKind(k), name(name) {}
@@ -52,13 +62,19 @@ protected:
 
 class Defined : public Symbol {
 public:
-  Defined(StringRefZ name, InputSection *isec, uint32_t value)
-      : Symbol(DefinedKind, name), isec(isec), value(value) {}
+  Defined(StringRefZ name, InputSection *isec, uint32_t value, bool isWeakDef)
+      : Symbol(DefinedKind, name), isec(isec), value(value),
+        weakDef(isWeakDef) {}
+
+  bool isWeakDef() const override { return weakDef; }
+
+  static bool classof(const Symbol *s) { return s->kind() == DefinedKind; }
 
   InputSection *isec;
   uint32_t value;
 
-  static bool classof(const Symbol *s) { return s->kind() == DefinedKind; }
+private:
+  const bool weakDef;
 };
 
 class Undefined : public Symbol {
@@ -70,13 +86,33 @@ public:
 
 class DylibSymbol : public Symbol {
 public:
-  DylibSymbol(DylibFile *file, StringRefZ name)
-      : Symbol(DylibKind, name), file(file) {}
+  DylibSymbol(DylibFile *file, StringRefZ name, bool isWeakDef)
+      : Symbol(DylibKind, name), file(file), weakDef(isWeakDef) {}
+
+  bool isWeakDef() const override { return weakDef; }
 
   static bool classof(const Symbol *s) { return s->kind() == DylibKind; }
 
   DylibFile *file;
-  uint32_t gotIndex = UINT32_MAX;
+  uint32_t stubsIndex = UINT32_MAX;
+  uint32_t lazyBindOffset = UINT32_MAX;
+
+private:
+  const bool weakDef;
+};
+
+class LazySymbol : public Symbol {
+public:
+  LazySymbol(ArchiveFile *file, const llvm::object::Archive::Symbol &sym)
+      : Symbol(LazyKind, sym.getName()), file(file), sym(sym) {}
+
+  static bool classof(const Symbol *s) { return s->kind() == LazyKind; }
+
+  void fetchArchiveMember();
+
+private:
+  ArchiveFile *file;
+  const llvm::object::Archive::Symbol sym;
 };
 
 inline uint64_t Symbol::getVA() const {
@@ -85,10 +121,17 @@ inline uint64_t Symbol::getVA() const {
   return 0;
 }
 
+inline uint64_t Symbol::getFileOffset() const {
+  if (auto *d = dyn_cast<Defined>(this))
+    return d->isec->getFileOffset() + d->value;
+  llvm_unreachable("attempt to get an offset from an undefined symbol");
+}
+
 union SymbolUnion {
   alignas(Defined) char a[sizeof(Defined)];
   alignas(Undefined) char b[sizeof(Undefined)];
   alignas(DylibSymbol) char c[sizeof(DylibSymbol)];
+  alignas(LazySymbol) char d[sizeof(LazySymbol)];
 };
 
 template <typename T, typename... ArgT>

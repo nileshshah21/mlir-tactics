@@ -8,6 +8,7 @@
 
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 
 #include "llvm/ADT/ArrayRef.h"
@@ -68,8 +69,8 @@ unsigned NestedPattern::getDepth() const {
 ///   3. if all is good, recursively matches the nested patterns;
 ///   4. if all nested match then the single operation matches too and is
 ///      appended to the list of matches;
-///   5. TODO(ntv) Optionally applies actions (lambda), in which case we will
-///      want to traverse in post-order DFS to avoid invalidating iterators.
+///   5. TODO: Optionally applies actions (lambda), in which case we will want
+///      to traverse in post-order DFS to avoid invalidating iterators.
 void NestedPattern::matchOne(Operation *op,
                              SmallVectorImpl<NestedMatch> *matches) {
   if (skip == op) {
@@ -101,7 +102,9 @@ void NestedPattern::matchOne(Operation *op,
   }
 }
 
-static bool isAffineForOp(Operation &op) { return isa<AffineForOp>(op); }
+static bool isForOp(Operation &op) {
+  return ((isa<AffineForOp>(op)) || (isa<scf::ForOp>(op)));
+}
 
 static bool isAffineIfOp(Operation &op) { return isa<AffineIfOp>(op); }
 
@@ -129,23 +132,21 @@ NestedPattern If(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
   });
 }
 
-NestedPattern For(NestedPattern child) {
-  return NestedPattern(child, isAffineForOp);
-}
+NestedPattern For(NestedPattern child) { return NestedPattern(child, isForOp); }
 NestedPattern For(FilterFunctionType filter, NestedPattern child) {
   return NestedPattern(
-      child, [=](Operation &op) { return isAffineForOp(op) && filter(op); });
+      child, [=](Operation &op) { return isForOp(op) && filter(op); });
 }
 NestedPattern For(ArrayRef<NestedPattern> nested) {
-  return NestedPattern(nested, isAffineForOp);
+  return NestedPattern(nested, isForOp);
 }
 NestedPattern For(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
   return NestedPattern(
-      nested, [=](Operation &op) { return isAffineForOp(op) && filter(op); });
+      nested, [=](Operation &op) { return isForOp(op) && filter(op); });
 }
 
 bool isLoadOrStore(Operation &op) {
-  return isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op);
+  return isa<AffineLoadOp, AffineStoreOp>(op);
 }
 
 } // end namespace matcher

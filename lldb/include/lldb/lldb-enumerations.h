@@ -269,7 +269,8 @@ enum ExpressionResults {
   eExpressionHitBreakpoint,
   eExpressionTimedOut,
   eExpressionResultUnavailable,
-  eExpressionStoppedForDebug
+  eExpressionStoppedForDebug,
+  eExpressionThreadVanished
 };
 
 enum SearchDepth {
@@ -525,6 +526,7 @@ enum CommandArgumentType {
   eArgTypeExpression,
   eArgTypeExpressionPath,
   eArgTypeExprFormat,
+  eArgTypeFileLineColumn,
   eArgTypeFilename,
   eArgTypeFormat,
   eArgTypeFrameIndex,

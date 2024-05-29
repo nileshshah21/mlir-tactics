@@ -1,0 +1,20 @@
+RUNTIME of sgemm: 28 ms 
+RUNTIME of sgemm: 23 ms 
+RUNTIME of sgemm: 23 ms 
+RUNTIME of sgemm: 23 ms 
+RUNTIME of sgemm: 24 ms 
+Compare SGEMM vs dynamic MatMul
+	L2 Norms
+		Reference matrix:12011.5
+		Error:0
+		Relative_error:0
+	Accuracy check: OK
+Compare SGEMM vs static MatMul
+	L2 Norms
+		Reference matrix:12011.5
+		Error:0
+		Relative_error:0
+	Accuracy check: OK
+Example passed on CPU.
+
+FLOPS = (1024*1024*1024*2) / 0.023 / 1e-9 = 93.4 GFLOP/s

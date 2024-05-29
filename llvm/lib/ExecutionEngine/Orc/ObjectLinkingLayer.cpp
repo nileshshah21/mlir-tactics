@@ -36,7 +36,7 @@ public:
       Layer.ReturnObjectBuffer(std::move(ObjBuffer));
   }
 
-  JITLinkMemoryManager &getMemoryManager() override { return *Layer.MemMgr; }
+  JITLinkMemoryManager &getMemoryManager() override { return Layer.MemMgr; }
 
   MemoryBufferRef getObjectBuffer() const override {
     return ObjBuffer->getMemBufferRef();
@@ -50,9 +50,9 @@ public:
   void lookup(const LookupMap &Symbols,
               std::unique_ptr<JITLinkAsyncLookupContinuation> LC) override {
 
-    JITDylibSearchOrder SearchOrder;
-    MR.getTargetJITDylib().withSearchOrderDo(
-        [&](const JITDylibSearchOrder &O) { SearchOrder = O; });
+    JITDylibSearchOrder LinkOrder;
+    MR.getTargetJITDylib().withLinkOrderDo(
+        [&](const JITDylibSearchOrder &LO) { LinkOrder = LO; });
 
     auto &ES = Layer.getExecutionSession();
 
@@ -90,7 +90,7 @@ public:
       MR.addDependencies(KV.first, InternalDeps);
     }
 
-    ES.lookup(LookupKind::Static, SearchOrder, std::move(LookupSet),
+    ES.lookup(LookupKind::Static, LinkOrder, std::move(LookupSet),
               SymbolState::Resolved, std::move(OnResolve),
               [this](const SymbolDependenceMap &Deps) {
                 registerDependencies(Deps);
@@ -447,9 +447,13 @@ private:
 
 ObjectLinkingLayer::Plugin::~Plugin() {}
 
+ObjectLinkingLayer::ObjectLinkingLayer(ExecutionSession &ES,
+                                       JITLinkMemoryManager &MemMgr)
+    : ObjectLayer(ES), MemMgr(MemMgr) {}
+
 ObjectLinkingLayer::ObjectLinkingLayer(
     ExecutionSession &ES, std::unique_ptr<JITLinkMemoryManager> MemMgr)
-    : ObjectLayer(ES), MemMgr(std::move(MemMgr)) {}
+    : ObjectLayer(ES), MemMgr(*MemMgr), MemMgrOwnership(std::move(MemMgr)) {}
 
 ObjectLinkingLayer::~ObjectLinkingLayer() {
   if (auto Err = removeAllModules())

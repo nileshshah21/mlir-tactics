@@ -32,9 +32,10 @@ namespace mlir {
 /// symbols referenced by name via a string attribute).
 class FuncOp
     : public Op<FuncOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                OpTrait::IsIsolatedFromAbove, OpTrait::FunctionLike,
-                OpTrait::AutomaticAllocationScope, OpTrait::PolyhedralScope,
-                CallableOpInterface::Trait, SymbolOpInterface::Trait> {
+                OpTrait::OneRegion, OpTrait::IsIsolatedFromAbove,
+                OpTrait::FunctionLike, OpTrait::AutomaticAllocationScope,
+                OpTrait::AffineScope, CallableOpInterface::Trait,
+                SymbolOpInterface::Trait> {
 public:
   using Op::Op;
   using Op::print;
@@ -50,10 +51,8 @@ public:
                        ArrayRef<MutableDictionaryAttr> argAttrs);
 
   static void build(OpBuilder &builder, OperationState &result, StringRef name,
-                    FunctionType type, ArrayRef<NamedAttribute> attrs);
-  static void build(OpBuilder &builder, OperationState &result, StringRef name,
-                    FunctionType type, ArrayRef<NamedAttribute> attrs,
-                    ArrayRef<MutableDictionaryAttr> argAttrs);
+                    FunctionType type, ArrayRef<NamedAttribute> attrs = {},
+                    ArrayRef<MutableDictionaryAttr> argAttrs = {});
 
   /// Operation hooks.
   static ParseResult parse(OpAsmParser &parser, OperationState &result);

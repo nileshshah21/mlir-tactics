@@ -10,14 +10,13 @@ config("features_config") {
 write_cmake_config("features") {
   input = "Features.inc.in"
   output = "$target_gen_dir/Features.inc"
-
-  # FIXME: Real remote support.
-  values = [ "CLANGD_ENABLE_REMOTE=0" ]
+  values = []
   if (clangd_build_xpc) {
     values += [ "CLANGD_BUILD_XPC=1" ]
   } else {
     values += [ "CLANGD_BUILD_XPC=0" ]
   }
+  values += [ "CLANGD_ENABLE_REMOTE=0" ]
   public_configs = [ ":features_config" ]
 }
 
@@ -63,6 +62,10 @@ static_library("clangd") {
     "CollectMacros.cpp",
     "CompileCommands.cpp",
     "Compiler.cpp",
+    "Config.cpp",
+    "ConfigCompile.cpp",
+    "ConfigProvider.cpp",
+    "ConfigYAML.cpp",
     "Diagnostics.cpp",
     "DraftStore.cpp",
     "ExpectedTypes.cpp",

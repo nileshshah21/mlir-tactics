@@ -1,5 +1,4 @@
 //===-- lib/Semantics/resolve-names.cpp -----------------------------------===//
-//
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -8,8 +7,10 @@
 
 #include "resolve-names.h"
 #include "assignment.h"
+#include "check-acc-structure.h"
 #include "check-omp-structure.h"
 #include "mod-file.h"
+#include "pointer-assignment.h"
 #include "program-tree.h"
 #include "resolve-names-utils.h"
 #include "rewrite-parse-tree.h"
@@ -18,7 +19,9 @@
 #include "flang/Common/indirection.h"
 #include "flang/Common/restorer.h"
 #include "flang/Evaluate/characteristics.h"
+#include "flang/Evaluate/check-expression.h"
 #include "flang/Evaluate/common.h"
+#include "flang/Evaluate/fold-designator.h"
 #include "flang/Evaluate/fold.h"
 #include "flang/Evaluate/intrinsics.h"
 #include "flang/Evaluate/tools.h"
@@ -287,7 +290,7 @@ protected:
     case parser::AccessSpec::Kind::Private:
       return Attr::PRIVATE;
     }
-    common::die("unreachable"); // suppress g++ warning
+    llvm_unreachable("Switch covers all cases"); // suppress g++ warning
   }
   Attr IntentSpecToAttr(const parser::IntentSpec &x) {
     switch (x.v) {
@@ -298,7 +301,7 @@ protected:
     case parser::IntentSpec::Intent::InOut:
       return Attr::INTENT_INOUT;
     }
-    common::die("unreachable"); // suppress g++ warning
+    llvm_unreachable("Switch covers all cases"); // suppress g++ warning
   }
 
 private:
@@ -455,6 +458,8 @@ public:
   // TODO: Will return the scope of a FORALL or implied DO loop; is this ok?
   // If not, should call FindProgramUnitContaining() instead.
   Scope &InclusiveScope();
+  // The enclosing scope, skipping derived types.
+  Scope &NonDerivedTypeScope();
 
   // Create a new scope and push it on the scope stack.
   void PushScope(Scope::Kind kind, Symbol *symbol);
@@ -806,6 +811,8 @@ public:
       const parser::Name &, const parser::InitialDataTarget &);
   void PointerInitialization(
       const parser::Name &, const parser::ProcPointerInit &);
+  void NonPointerInitialization(
+      const parser::Name &, const parser::ConstantExpr &, bool inComponentDecl);
   void CheckExplicitInterface(const parser::Name &);
   void CheckBindings(const parser::TypeBoundProcedureStmt::WithoutInterface &);
 
@@ -907,7 +914,7 @@ private:
   void SetSaveAttr(Symbol &);
   bool HandleUnrestrictedSpecificIntrinsicFunction(const parser::Name &);
   const parser::Name *FindComponent(const parser::Name *, const parser::Name &);
-  void CheckInitialDataTarget(const Symbol &, const SomeExpr &, SourceName);
+  bool CheckInitialDataTarget(const Symbol &, const SomeExpr &, SourceName);
   void CheckInitialProcTarget(const Symbol &, const parser::Name &, SourceName);
   void Initialization(const parser::Name &, const parser::Initialization &,
       bool inComponentDecl);
@@ -931,7 +938,7 @@ private:
     } else if (auto *details{symbol.detailsIf<UseDetails>()}) {
       Say(name.source,
           "'%s' is use-associated from module '%s' and cannot be re-declared"_err_en_US,
-          name.source, details->module().name());
+          name.source, GetUsedModule(*details).name());
     } else if (auto *details{symbol.detailsIf<SubprogramNameDetails>()}) {
       if (details->kind() == SubprogramKind::Module) {
         Say2(name,
@@ -970,6 +977,7 @@ public:
   bool Pre(const parser::AcSpec &);
   bool Pre(const parser::AcImpliedDo &);
   bool Pre(const parser::DataImpliedDo &);
+  bool Pre(const parser::DataIDoObject &);
   bool Pre(const parser::DataStmtObject &);
   bool Pre(const parser::DataStmtValue &);
   bool Pre(const parser::DoConstruct &);
@@ -985,11 +993,16 @@ public:
   void Post(const parser::EndAssociateStmt &);
   void Post(const parser::Association &);
   void Post(const parser::SelectTypeStmt &);
+  void Post(const parser::SelectRankStmt &);
   bool Pre(const parser::SelectTypeConstruct &);
   void Post(const parser::SelectTypeConstruct &);
   bool Pre(const parser::SelectTypeConstruct::TypeCase &);
   void Post(const parser::SelectTypeConstruct::TypeCase &);
+  // Creates Block scopes with neither symbol name nor symbol details.
+  bool Pre(const parser::SelectRankConstruct::RankCase &);
+  void Post(const parser::SelectRankConstruct::RankCase &);
   void Post(const parser::TypeGuardStmt::Guard &);
+  void Post(const parser::SelectRankCaseStmt::Rank &);
   bool Pre(const parser::ChangeTeamStmt &);
   void Post(const parser::EndChangeTeamStmt &);
   void Post(const parser::CoarrayAssociation &);
@@ -1069,6 +1082,305 @@ private:
   void PopAssociation();
 };
 
+template <typename T> class DirectiveAttributeVisitor {
+public:
+  explicit DirectiveAttributeVisitor(
+      SemanticsContext &context, ResolveNamesVisitor &resolver)
+      : context_{context}, resolver_{resolver} {}
+
+protected:
+  struct DirContext {
+    DirContext(const parser::CharBlock &source, T d, Scope &s)
+        : directiveSource{source}, directive{d}, scope{s} {}
+    parser::CharBlock directiveSource;
+    T directive;
+    Scope &scope;
+    Symbol::Flag defaultDSA{Symbol::Flag::AccShared}; // TODOACC
+    std::map<const Symbol *, Symbol::Flag> objectWithDSA;
+    bool withinConstruct{false};
+    int64_t associatedLoopLevel{0};
+  };
+
+  DirContext &GetContext() {
+    CHECK(!dirContext_.empty());
+    return dirContext_.back();
+  }
+  void PushContext(const parser::CharBlock &source, T dir) {
+    dirContext_.emplace_back(source, dir, context_.FindScope(source));
+  }
+  void PopContext() { dirContext_.pop_back(); }
+  void SetContextDirectiveSource(parser::CharBlock &dir) {
+    GetContext().directiveSource = dir;
+  }
+  void SetContextDirectiveEnum(T dir) { GetContext().directive = dir; }
+  Scope &currScope() { return GetContext().scope; }
+  void SetContextDefaultDSA(Symbol::Flag flag) {
+    GetContext().defaultDSA = flag;
+  }
+  void AddToContextObjectWithDSA(
+      const Symbol &symbol, Symbol::Flag flag, DirContext &context) {
+    context.objectWithDSA.emplace(&symbol, flag);
+  }
+  void AddToContextObjectWithDSA(const Symbol &symbol, Symbol::Flag flag) {
+    AddToContextObjectWithDSA(symbol, flag, GetContext());
+  }
+  bool IsObjectWithDSA(const Symbol &symbol) {
+    auto it{GetContext().objectWithDSA.find(&symbol)};
+    return it != GetContext().objectWithDSA.end();
+  }
+  void SetContextAssociatedLoopLevel(int64_t level) {
+    GetContext().associatedLoopLevel = level;
+  }
+  Symbol &MakeAssocSymbol(const SourceName &name, Symbol &prev, Scope &scope) {
+    const auto pair{scope.try_emplace(name, Attrs{}, HostAssocDetails{prev})};
+    return *pair.first->second;
+  }
+  Symbol &MakeAssocSymbol(const SourceName &name, Symbol &prev) {
+    return MakeAssocSymbol(name, prev, currScope());
+  }
+  static const parser::Name *GetDesignatorNameIfDataRef(
+      const parser::Designator &designator) {
+    const auto *dataRef{std::get_if<parser::DataRef>(&designator.u)};
+    return dataRef ? std::get_if<parser::Name>(&dataRef->u) : nullptr;
+  }
+  void AddDataSharingAttributeObject(SymbolRef object) {
+    dataSharingAttributeObjects_.insert(object);
+  }
+  void ClearDataSharingAttributeObjects() {
+    dataSharingAttributeObjects_.clear();
+  }
+  bool HasDataSharingAttributeObject(const Symbol &);
+  const parser::Name &GetLoopIndex(const parser::DoConstruct &);
+  const parser::DoConstruct *GetDoConstructIf(
+      const parser::ExecutionPartConstruct &);
+  Symbol *DeclarePrivateAccessEntity(
+      const parser::Name &, Symbol::Flag, Scope &);
+  Symbol *DeclarePrivateAccessEntity(Symbol &, Symbol::Flag, Scope &);
+  Symbol *DeclareOrMarkOtherAccessEntity(const parser::Name &, Symbol::Flag);
+
+  SymbolSet dataSharingAttributeObjects_; // on one directive
+  SemanticsContext &context_;
+  ResolveNamesVisitor &resolver_;
+  std::vector<DirContext> dirContext_; // used as a stack
+};
+
+template <typename T>
+bool DirectiveAttributeVisitor<T>::HasDataSharingAttributeObject(
+    const Symbol &object) {
+  auto it{dataSharingAttributeObjects_.find(object)};
+  return it != dataSharingAttributeObjects_.end();
+}
+
+template <typename T>
+const parser::Name &DirectiveAttributeVisitor<T>::GetLoopIndex(
+    const parser::DoConstruct &x) {
+  auto &loopControl{x.GetLoopControl().value()};
+  using Bounds = parser::LoopControl::Bounds;
+  const Bounds &bounds{std::get<Bounds>(loopControl.u)};
+  return bounds.name.thing;
+}
+
+template <typename T>
+const parser::DoConstruct *DirectiveAttributeVisitor<T>::GetDoConstructIf(
+    const parser::ExecutionPartConstruct &x) {
+  return parser::Unwrap<parser::DoConstruct>(x);
+}
+
+template <typename T>
+Symbol *DirectiveAttributeVisitor<T>::DeclarePrivateAccessEntity(
+    const parser::Name &name, Symbol::Flag flag, Scope &scope) {
+  if (!name.symbol) {
+    return nullptr; // not resolved by Name Resolution step, do nothing
+  }
+  name.symbol = DeclarePrivateAccessEntity(*name.symbol, flag, scope);
+  return name.symbol;
+}
+
+template <typename T>
+Symbol *DirectiveAttributeVisitor<T>::DeclarePrivateAccessEntity(
+    Symbol &object, Symbol::Flag flag, Scope &scope) {
+  if (object.owner() != currScope()) {
+    auto &symbol{MakeAssocSymbol(object.name(), object, scope)};
+    symbol.set(flag);
+    return &symbol;
+  } else {
+    object.set(flag);
+    return &object;
+  }
+}
+
+// Create scopes for OpenACC constructs
+class AccVisitor : public virtual DeclarationVisitor {
+public:
+  void AddAccSourceRange(const parser::CharBlock &);
+
+  static bool NeedsScope(const parser::OpenACCBlockConstruct &);
+
+  bool Pre(const parser::OpenACCBlockConstruct &);
+  void Post(const parser::OpenACCBlockConstruct &);
+  bool Pre(const parser::AccBeginBlockDirective &x) {
+    AddAccSourceRange(x.source);
+    return true;
+  }
+  void Post(const parser::AccBeginBlockDirective &) {
+    messageHandler().set_currStmtSource(std::nullopt);
+  }
+  bool Pre(const parser::AccEndBlockDirective &x) {
+    AddAccSourceRange(x.source);
+    return true;
+  }
+  void Post(const parser::AccEndBlockDirective &) {
+    messageHandler().set_currStmtSource(std::nullopt);
+  }
+  bool Pre(const parser::AccBeginLoopDirective &x) {
+    AddAccSourceRange(x.source);
+    return true;
+  }
+  void Post(const parser::AccBeginLoopDirective &x) {
+    messageHandler().set_currStmtSource(std::nullopt);
+  }
+};
+
+bool AccVisitor::NeedsScope(const parser::OpenACCBlockConstruct &x) {
+  const auto &beginBlockDir{std::get<parser::AccBeginBlockDirective>(x.t)};
+  const auto &beginDir{std::get<parser::AccBlockDirective>(beginBlockDir.t)};
+  switch (beginDir.v) {
+  case llvm::acc::Directive::ACCD_data:
+  case llvm::acc::Directive::ACCD_host_data:
+  case llvm::acc::Directive::ACCD_kernels:
+  case llvm::acc::Directive::ACCD_parallel:
+  case llvm::acc::Directive::ACCD_serial:
+    return true;
+  default:
+    return false;
+  }
+}
+
+void AccVisitor::AddAccSourceRange(const parser::CharBlock &source) {
+  messageHandler().set_currStmtSource(source);
+  currScope().AddSourceRange(source);
+}
+
+bool AccVisitor::Pre(const parser::OpenACCBlockConstruct &x) {
+  if (NeedsScope(x)) {
+    PushScope(Scope::Kind::Block, nullptr);
+  }
+  return true;
+}
+
+void AccVisitor::Post(const parser::OpenACCBlockConstruct &x) {
+  if (NeedsScope(x)) {
+    PopScope();
+  }
+}
+
+class AccAttributeVisitor : DirectiveAttributeVisitor<llvm::acc::Directive> {
+public:
+  explicit AccAttributeVisitor(
+      SemanticsContext &context, ResolveNamesVisitor &resolver)
+      : DirectiveAttributeVisitor(context, resolver) {}
+
+  template <typename A> void Walk(const A &x) { parser::Walk(x, *this); }
+  template <typename A> bool Pre(const A &) { return true; }
+  template <typename A> void Post(const A &) {}
+
+  bool Pre(const parser::SpecificationPart &x) {
+    Walk(std::get<std::list<parser::OpenACCDeclarativeConstruct>>(x.t));
+    return false;
+  }
+
+  bool Pre(const parser::OpenACCBlockConstruct &);
+  void Post(const parser::OpenACCBlockConstruct &) { PopContext(); }
+  bool Pre(const parser::OpenACCCombinedConstruct &);
+  void Post(const parser::OpenACCCombinedConstruct &) { PopContext(); }
+
+  void Post(const parser::AccBeginBlockDirective &) {
+    GetContext().withinConstruct = true;
+  }
+
+  bool Pre(const parser::OpenACCLoopConstruct &);
+  void Post(const parser::OpenACCLoopConstruct &) { PopContext(); }
+  void Post(const parser::AccLoopDirective &) {
+    GetContext().withinConstruct = true;
+  }
+
+  bool Pre(const parser::OpenACCStandaloneConstruct &);
+  void Post(const parser::OpenACCStandaloneConstruct &) { PopContext(); }
+  void Post(const parser::AccStandaloneDirective &) {
+    GetContext().withinConstruct = true;
+  }
+
+  void Post(const parser::AccDefaultClause &);
+
+  bool Pre(const parser::AccClause::Copy &x) {
+    ResolveAccObjectList(x.v, Symbol::Flag::AccCopyIn);
+    ResolveAccObjectList(x.v, Symbol::Flag::AccCopyOut);
+    return false;
+  }
+
+  bool Pre(const parser::AccClause::Create &x) {
+    const auto &objectList{std::get<parser::AccObjectList>(x.v.t)};
+    ResolveAccObjectList(objectList, Symbol::Flag::AccCreate);
+    return false;
+  }
+
+  bool Pre(const parser::AccClause::Copyin &x) {
+    const auto &objectList{std::get<parser::AccObjectList>(x.v.t)};
+    ResolveAccObjectList(objectList, Symbol::Flag::AccCopyIn);
+    return false;
+  }
+
+  bool Pre(const parser::AccClause::Copyout &x) {
+    const auto &objectList{std::get<parser::AccObjectList>(x.v.t)};
+    ResolveAccObjectList(objectList, Symbol::Flag::AccCopyOut);
+    return false;
+  }
+
+  bool Pre(const parser::AccClause::Present &x) {
+    ResolveAccObjectList(x.v, Symbol::Flag::AccPresent);
+    return false;
+  }
+  bool Pre(const parser::AccClause::Private &x) {
+    ResolveAccObjectList(x.v, Symbol::Flag::AccPrivate);
+    return false;
+  }
+  bool Pre(const parser::AccClause::FirstPrivate &x) {
+    ResolveAccObjectList(x.v, Symbol::Flag::AccFirstPrivate);
+    return false;
+  }
+
+  void Post(const parser::Name &);
+
+private:
+  int64_t GetAssociatedLoopLevelFromClauses(const parser::AccClauseList &);
+
+  static constexpr Symbol::Flags dataSharingAttributeFlags{
+      Symbol::Flag::AccShared, Symbol::Flag::AccPrivate,
+      Symbol::Flag::AccPresent, Symbol::Flag::AccFirstPrivate,
+      Symbol::Flag::AccReduction};
+
+  static constexpr Symbol::Flags dataMappingAttributeFlags{
+      Symbol::Flag::AccCreate, Symbol::Flag::AccCopyIn,
+      Symbol::Flag::AccCopyOut, Symbol::Flag::AccDelete};
+
+  static constexpr Symbol::Flags accFlagsRequireNewSymbol{
+      Symbol::Flag::AccPrivate, Symbol::Flag::AccFirstPrivate,
+      Symbol::Flag::AccReduction};
+
+  static constexpr Symbol::Flags accFlagsRequireMark{};
+
+  void PrivatizeAssociatedLoopIndex(const parser::OpenACCLoopConstruct &);
+  void ResolveAccObjectList(const parser::AccObjectList &, Symbol::Flag);
+  void ResolveAccObject(const parser::AccObject &, Symbol::Flag);
+  Symbol *ResolveAcc(const parser::Name &, Symbol::Flag, Scope &);
+  Symbol *ResolveAcc(Symbol &, Symbol::Flag, Scope &);
+  Symbol *ResolveAccCommonBlockName(const parser::Name *);
+  Symbol *DeclareOrMarkOtherAccessEntity(const parser::Name &, Symbol::Flag);
+  Symbol *DeclareOrMarkOtherAccessEntity(Symbol &, Symbol::Flag);
+  void CheckMultipleAppearances(
+      const parser::Name &, const Symbol &, Symbol::Flag);
+};
+
 // Create scopes for OpenMP constructs
 class OmpVisitor : public virtual DeclarationVisitor {
 public:
@@ -1138,9 +1450,9 @@ bool OmpVisitor::NeedsScope(const parser::OpenMPBlockConstruct &x) {
   const auto &beginBlockDir{std::get<parser::OmpBeginBlockDirective>(x.t)};
   const auto &beginDir{std::get<parser::OmpBlockDirective>(beginBlockDir.t)};
   switch (beginDir.v) {
-  case parser::OmpBlockDirective::Directive::TargetData:
-  case parser::OmpBlockDirective::Directive::Master:
-  case parser::OmpBlockDirective::Directive::Ordered:
+  case llvm::omp::Directive::OMPD_target_data:
+  case llvm::omp::Directive::OMPD_master:
+  case llvm::omp::Directive::OMPD_ordered:
     return false;
   default:
     return true;
@@ -1166,11 +1478,11 @@ void OmpVisitor::Post(const parser::OpenMPBlockConstruct &x) {
 }
 
 // Data-sharing and Data-mapping attributes for data-refs in OpenMP construct
-class OmpAttributeVisitor {
+class OmpAttributeVisitor : DirectiveAttributeVisitor<llvm::omp::Directive> {
 public:
   explicit OmpAttributeVisitor(
       SemanticsContext &context, ResolveNamesVisitor &resolver)
-      : context_{context}, resolver_{resolver} {}
+      : DirectiveAttributeVisitor(context, resolver) {}
 
   template <typename A> void Walk(const A &x) { parser::Walk(x, *this); }
 
@@ -1223,68 +1535,7 @@ public:
   void Post(const parser::Name &);
 
 private:
-  struct OmpContext {
-    OmpContext(const parser::CharBlock &source, OmpDirective d, Scope &s)
-        : directiveSource{source}, directive{d}, scope{s} {}
-    parser::CharBlock directiveSource;
-    OmpDirective directive;
-    Scope &scope;
-    // TODO: default DSA is implicitly determined in different ways
-    Symbol::Flag defaultDSA{Symbol::Flag::OmpShared};
-    // variables on Data-sharing attribute clauses
-    std::map<const Symbol *, Symbol::Flag> objectWithDSA;
-    bool withinConstruct{false};
-    std::size_t associatedLoopLevel{0};
-  };
-  // back() is the top of the stack
-  OmpContext &GetContext() {
-    CHECK(!ompContext_.empty());
-    return ompContext_.back();
-  }
-  void PushContext(const parser::CharBlock &source, OmpDirective dir) {
-    ompContext_.emplace_back(source, dir, context_.FindScope(source));
-  }
-  void PopContext() { ompContext_.pop_back(); }
-  void SetContextDirectiveSource(parser::CharBlock &dir) {
-    GetContext().directiveSource = dir;
-  }
-  void SetContextDirectiveEnum(OmpDirective dir) {
-    GetContext().directive = dir;
-  }
-  Scope &currScope() { return GetContext().scope; }
-  void SetContextDefaultDSA(Symbol::Flag flag) {
-    GetContext().defaultDSA = flag;
-  }
-  void AddToContextObjectWithDSA(
-      const Symbol &symbol, Symbol::Flag flag, OmpContext &context) {
-    context.objectWithDSA.emplace(&symbol, flag);
-  }
-  void AddToContextObjectWithDSA(const Symbol &symbol, Symbol::Flag flag) {
-    AddToContextObjectWithDSA(symbol, flag, GetContext());
-  }
-  bool IsObjectWithDSA(const Symbol &symbol) {
-    auto it{GetContext().objectWithDSA.find(&symbol)};
-    return it != GetContext().objectWithDSA.end();
-  }
-
-  void SetContextAssociatedLoopLevel(std::size_t level) {
-    GetContext().associatedLoopLevel = level;
-  }
-  std::size_t GetAssociatedLoopLevelFromClauses(const parser::OmpClauseList &);
-
-  Symbol &MakeAssocSymbol(const SourceName &name, Symbol &prev, Scope &scope) {
-    const auto pair{scope.try_emplace(name, Attrs{}, HostAssocDetails{prev})};
-    return *pair.first->second;
-  }
-  Symbol &MakeAssocSymbol(const SourceName &name, Symbol &prev) {
-    return MakeAssocSymbol(name, prev, currScope());
-  }
-
-  static const parser::Name *GetDesignatorNameIfDataRef(
-      const parser::Designator &designator) {
-    const auto *dataRef{std::get_if<parser::DataRef>(&designator.u)};
-    return dataRef ? std::get_if<parser::Name>(&dataRef->u) : nullptr;
-  }
+  std::int64_t GetAssociatedLoopLevelFromClauses(const parser::OmpClauseList &);
 
   static constexpr Symbol::Flags dataSharingAttributeFlags{
       Symbol::Flag::OmpShared, Symbol::Flag::OmpPrivate,
@@ -1299,19 +1550,8 @@ private:
   static constexpr Symbol::Flags ompFlagsRequireMark{
       Symbol::Flag::OmpThreadprivate};
 
-  void AddDataSharingAttributeObject(SymbolRef object) {
-    dataSharingAttributeObjects_.insert(object);
-  }
-  void ClearDataSharingAttributeObjects() {
-    dataSharingAttributeObjects_.clear();
-  }
-  bool HasDataSharingAttributeObject(const Symbol &);
-
-  const parser::DoConstruct *GetDoConstructIf(
-      const parser::ExecutionPartConstruct &);
   // Predetermined DSA rules
   void PrivatizeAssociatedLoopIndex(const parser::OpenMPLoopConstruct &);
-  const parser::Name &GetLoopIndex(const parser::DoConstruct &);
   void ResolveSeqLoopIndexInParallelOrTaskConstruct(const parser::Name &);
 
   void ResolveOmpObjectList(const parser::OmpObjectList &, Symbol::Flag);
@@ -1319,18 +1559,10 @@ private:
   Symbol *ResolveOmp(const parser::Name &, Symbol::Flag, Scope &);
   Symbol *ResolveOmp(Symbol &, Symbol::Flag, Scope &);
   Symbol *ResolveOmpCommonBlockName(const parser::Name *);
-  Symbol *DeclarePrivateAccessEntity(
-      const parser::Name &, Symbol::Flag, Scope &);
-  Symbol *DeclarePrivateAccessEntity(Symbol &, Symbol::Flag, Scope &);
   Symbol *DeclareOrMarkOtherAccessEntity(const parser::Name &, Symbol::Flag);
   Symbol *DeclareOrMarkOtherAccessEntity(Symbol &, Symbol::Flag);
   void CheckMultipleAppearances(
       const parser::Name &, const Symbol &, Symbol::Flag);
-  SymbolSet dataSharingAttributeObjects_; // on one directive
-
-  SemanticsContext &context_;
-  ResolveNamesVisitor &resolver_;
-  std::vector<OmpContext> ompContext_; // used as a stack
 };
 
 // Walk the parse tree and resolve names to symbols.
@@ -1338,8 +1570,11 @@ class ResolveNamesVisitor : public virtual ScopeHandler,
                             public ModuleVisitor,
                             public SubprogramVisitor,
                             public ConstructVisitor,
-                            public OmpVisitor {
+                            public OmpVisitor,
+                            public AccVisitor {
 public:
+  using AccVisitor::Post;
+  using AccVisitor::Pre;
   using ArraySpecVisitor::Post;
   using ConstructVisitor::Post;
   using ConstructVisitor::Pre;
@@ -1391,13 +1626,27 @@ public:
   void Post(const parser::AssignedGotoStmt &);
 
   // These nodes should never be reached: they are handled in ProgramUnit
-  bool Pre(const parser::MainProgram &) { DIE("unreachable"); }
-  bool Pre(const parser::FunctionSubprogram &) { DIE("unreachable"); }
-  bool Pre(const parser::SubroutineSubprogram &) { DIE("unreachable"); }
-  bool Pre(const parser::SeparateModuleSubprogram &) { DIE("unreachable"); }
-  bool Pre(const parser::Module &) { DIE("unreachable"); }
-  bool Pre(const parser::Submodule &) { DIE("unreachable"); }
-  bool Pre(const parser::BlockData &) { DIE("unreachable"); }
+  bool Pre(const parser::MainProgram &) {
+    llvm_unreachable("This node is handled in ProgramUnit");
+  }
+  bool Pre(const parser::FunctionSubprogram &) {
+    llvm_unreachable("This node is handled in ProgramUnit");
+  }
+  bool Pre(const parser::SubroutineSubprogram &) {
+    llvm_unreachable("This node is handled in ProgramUnit");
+  }
+  bool Pre(const parser::SeparateModuleSubprogram &) {
+    llvm_unreachable("This node is handled in ProgramUnit");
+  }
+  bool Pre(const parser::Module &) {
+    llvm_unreachable("This node is handled in ProgramUnit");
+  }
+  bool Pre(const parser::Submodule &) {
+    llvm_unreachable("This node is handled in ProgramUnit");
+  }
+  bool Pre(const parser::BlockData &) {
+    llvm_unreachable("This node is handled in ProgramUnit");
+  }
 
   void NoteExecutablePartCall(Symbol::Flag, const parser::Call &);
 
@@ -1410,7 +1659,8 @@ private:
 
   void PreSpecificationConstruct(const parser::SpecificationConstruct &);
   void CreateGeneric(const parser::GenericSpec &);
-  void FinishSpecificationPart();
+  void FinishSpecificationPart(const std::list<parser::DeclarationConstruct> &);
+  void AnalyzeStmtFunctionStmt(const parser::StmtFunctionStmt &);
   void CheckImports();
   void CheckImport(const SourceName &, const SourceName &);
   void HandleCall(Symbol::Flag, const parser::Call &);
@@ -1422,6 +1672,7 @@ private:
   void FinishSpecificationParts(const ProgramTree &);
   void FinishDerivedTypeInstantiation(Scope &);
   void ResolveExecutionParts(const ProgramTree &);
+  void ResolveAccParts(const parser::ProgramUnit &);
   void ResolveOmpParts(const parser::ProgramUnit &);
 };
 
@@ -1927,7 +2178,7 @@ void ScopeHandler::SayAlreadyDeclared(const SourceName &name, Symbol &prev) {
     Say(name, "'%s' is already declared in this scoping unit"_err_en_US)
         .Attach(details->location(),
             "It is use-associated with '%s' in module '%s'"_err_en_US,
-            details->symbol().name(), details->module().name());
+            details->symbol().name(), GetUsedModule(*details).name());
   } else {
     SayAlreadyDeclared(name, prev.name());
   }
@@ -1987,11 +2238,16 @@ void ScopeHandler::Say2(const parser::Name &name, MessageFixedText &&msg1,
 
 Scope &ScopeHandler::InclusiveScope() {
   for (auto *scope{&currScope()};; scope = &scope->parent()) {
-    if (scope->kind() != Scope::Kind::Block && !scope->IsDerivedType()) {
+    if (scope->kind() != Scope::Kind::Block && !scope->IsDerivedType() &&
+        !scope->IsStmtFunction()) {
       return *scope;
     }
   }
   DIE("inclusive scope not found");
+}
+
+Scope &ScopeHandler::NonDerivedTypeScope() {
+  return currScope_->IsDerivedType() ? currScope_->parent() : *currScope_;
 }
 
 void ScopeHandler::PushScope(Scope::Kind kind, Symbol *symbol) {
@@ -2279,6 +2535,7 @@ void ModuleVisitor::Post(const parser::UseStmt &x) {
     }
     for (const auto &[name, symbol] : *useModuleScope_) {
       if (symbol->attrs().test(Attr::PUBLIC) &&
+          !symbol->attrs().test(Attr::INTRINSIC) &&
           !symbol->detailsIf<MiscDetails>()) {
         if (useNames.count(name) == 0) {
           auto *localSymbol{FindInScope(currScope(), name)};
@@ -2358,14 +2615,14 @@ void ModuleVisitor::AddUse(
         Say(location,
             "Generic interface '%s' has ambiguous specific procedures"
             " from modules '%s' and '%s'"_err_en_US,
-            localSymbol.name(), useDetails->module().name(),
+            localSymbol.name(), GetUsedModule(*useDetails).name(),
             useSymbol.owner().GetName().value());
       } else if (generic1.derivedType() && generic2.derivedType() &&
           generic1.derivedType() != generic2.derivedType()) {
         Say(location,
             "Generic interface '%s' has ambiguous derived types"
             " from modules '%s' and '%s'"_err_en_US,
-            localSymbol.name(), useDetails->module().name(),
+            localSymbol.name(), GetUsedModule(*useDetails).name(),
             useSymbol.owner().GetName().value());
       } else {
         generic1.CopyFrom(generic2);
@@ -2659,6 +2916,7 @@ bool SubprogramVisitor::HandleStmtFunction(const parser::StmtFunctionStmt &x) {
     return true;
   }
   auto &symbol{PushSubprogramScope(name, Symbol::Flag::Function)};
+  symbol.set(Symbol::Flag::StmtFunction);
   EraseSymbol(symbol); // removes symbol added by PushSubprogramScope
   auto &details{symbol.get<SubprogramDetails>()};
   for (const auto &dummyName : std::get<std::list<parser::Name>>(x.t)) {
@@ -2684,11 +2942,9 @@ bool SubprogramVisitor::HandleStmtFunction(const parser::StmtFunctionStmt &x) {
   details.set_result(result);
   const auto &parsedExpr{std::get<parser::Scalar<parser::Expr>>(x.t)};
   Walk(parsedExpr);
-  if (auto expr{AnalyzeExpr(context(), parsedExpr)}) {
-    details.set_stmtFunction(std::move(*expr));
-  } else {
-    context().SetError(symbol);
-  }
+  // The analysis of the expression that constitutes the body of the
+  // statement function is deferred to FinishSpecificationPart() so that
+  // all declarations and implicit typing are complete.
   PopScope();
   return true;
 }
@@ -3289,9 +3545,7 @@ void DeclarationVisitor::Post(const parser::EnumDef &) {
 
 bool DeclarationVisitor::Pre(const parser::AccessSpec &x) {
   Attr attr{AccessSpecToAttr(x)};
-  const Scope &scope{
-      currScope().IsDerivedType() ? currScope().parent() : currScope()};
-  if (!scope.IsModule()) { // C817
+  if (!NonDerivedTypeScope().IsModule()) { // C817
     Say(currStmtSource().value(),
         "%s attribute may only appear in the specification part of a module"_err_en_US,
         EnumToString(attr));
@@ -3430,18 +3684,25 @@ Symbol &DeclarationVisitor::DeclareProcEntity(
     const parser::Name &name, Attrs attrs, const ProcInterface &interface) {
   Symbol &symbol{DeclareEntity<ProcEntityDetails>(name, attrs)};
   if (auto *details{symbol.detailsIf<ProcEntityDetails>()}) {
-    if (interface.type()) {
-      symbol.set(Symbol::Flag::Function);
-    } else if (interface.symbol()) {
-      if (interface.symbol()->test(Symbol::Flag::Function)) {
+    if (details->IsInterfaceSet()) {
+      SayWithDecl(name, symbol,
+          "The interface for procedure '%s' has already been "
+          "declared"_err_en_US);
+      context().SetError(symbol);
+    } else {
+      if (interface.type()) {
         symbol.set(Symbol::Flag::Function);
-      } else if (interface.symbol()->test(Symbol::Flag::Subroutine)) {
-        symbol.set(Symbol::Flag::Subroutine);
+      } else if (interface.symbol()) {
+        if (interface.symbol()->test(Symbol::Flag::Function)) {
+          symbol.set(Symbol::Flag::Function);
+        } else if (interface.symbol()->test(Symbol::Flag::Subroutine)) {
+          symbol.set(Symbol::Flag::Subroutine);
+        }
       }
+      details->set_interface(interface);
+      SetBindNameOn(symbol);
+      SetPassNameOn(symbol);
     }
-    details->set_interface(interface);
-    SetBindNameOn(symbol);
-    SetPassNameOn(symbol);
   }
   return symbol;
 }
@@ -3455,18 +3716,22 @@ Symbol &DeclarationVisitor::DeclareObjectEntity(
     }
     if (!arraySpec().empty()) {
       if (details->IsArray()) {
-        Say(name,
-            "The dimensions of '%s' have already been declared"_err_en_US);
-        context().SetError(symbol);
+        if (!context().HasError(symbol)) {
+          Say(name,
+              "The dimensions of '%s' have already been declared"_err_en_US);
+          context().SetError(symbol);
+        }
       } else {
         details->set_shape(arraySpec());
       }
     }
     if (!coarraySpec().empty()) {
       if (details->IsCoarray()) {
-        Say(name,
-            "The codimensions of '%s' have already been declared"_err_en_US);
-        context().SetError(symbol);
+        if (!context().HasError(symbol)) {
+          Say(name,
+              "The codimensions of '%s' have already been declared"_err_en_US);
+          context().SetError(symbol);
+        }
       } else {
         details->set_coshape(coarraySpec());
       }
@@ -3666,6 +3931,13 @@ bool DeclarationVisitor::Pre(const parser::DerivedTypeDef &x) {
     if (!symbol) {
       Say(paramName,
           "No definition found for type parameter '%s'"_err_en_US); // C742
+      // No symbol for a type param.  Create one and mark it as containing an
+      // error to improve subsequent semantic processing
+      BeginAttrs();
+      Symbol *typeParam{MakeTypeSymbol(
+          paramName, TypeParamDetails{common::TypeParamAttr::Len})};
+      typeParam->set(Symbol::Flag::Error);
+      EndAttrs();
     } else if (!symbol->has<TypeParamDetails>()) {
       Say2(paramName, "'%s' is not defined as a type parameter"_err_en_US,
           *symbol, "Definition of '%s'"_en_US); // C741
@@ -3679,7 +3951,7 @@ bool DeclarationVisitor::Pre(const parser::DerivedTypeDef &x) {
     if (symbol->has<TypeParamDetails>() && !paramNames.count(name)) {
       SayDerivedType(name,
           "'%s' is not a type parameter of this derived type"_err_en_US,
-          currScope()); // C742
+          currScope()); // C741
     }
   }
   Walk(std::get<std::list<parser::Statement<parser::PrivateOrSequence>>>(x.t));
@@ -3820,12 +4092,48 @@ void DeclarationVisitor::Post(const parser::ComponentDecl &x) {
       !attrs.HasAny({Attr::PUBLIC, Attr::PRIVATE})) {
     attrs.set(Attr::PRIVATE);
   }
-  if (!attrs.HasAny({Attr::POINTER, Attr::ALLOCATABLE})) {
-    if (const auto *declType{GetDeclTypeSpec()}) {
-      if (const auto *derived{declType->AsDerived()}) {
+  if (const auto *declType{GetDeclTypeSpec()}) {
+    if (const auto *derived{declType->AsDerived()}) {
+      if (!attrs.HasAny({Attr::POINTER, Attr::ALLOCATABLE})) {
         if (derivedTypeInfo_.type == &derived->typeSymbol()) { // C744
           Say("Recursive use of the derived type requires "
               "POINTER or ALLOCATABLE"_err_en_US);
+        }
+      }
+      if (!coarraySpec().empty()) { // C747
+        if (IsTeamType(derived)) {
+          Say("A coarray component may not be of type TEAM_TYPE from "
+              "ISO_FORTRAN_ENV"_err_en_US);
+        } else {
+          if (IsIsoCType(derived)) {
+            Say("A coarray component may not be of type C_PTR or C_FUNPTR from "
+                "ISO_C_BINDING"_err_en_US);
+          }
+        }
+      }
+      if (auto it{FindCoarrayUltimateComponent(*derived)}) { // C748
+        std::string ultimateName{it.BuildResultDesignatorName()};
+        // Strip off the leading "%"
+        if (ultimateName.length() > 1) {
+          ultimateName.erase(0, 1);
+          if (attrs.HasAny({Attr::POINTER, Attr::ALLOCATABLE})) {
+            evaluate::AttachDeclaration(
+                Say(name.source,
+                    "A component with a POINTER or ALLOCATABLE attribute may "
+                    "not "
+                    "be of a type with a coarray ultimate component (named "
+                    "'%s')"_err_en_US,
+                    ultimateName),
+                derived->typeSymbol());
+          }
+          if (!arraySpec().empty() || !coarraySpec().empty()) {
+            evaluate::AttachDeclaration(
+                Say(name.source,
+                    "An array or coarray component may not be of a type with a "
+                    "coarray ultimate component (named '%s')"_err_en_US,
+                    ultimateName),
+                derived->typeSymbol());
+          }
         }
       }
     }
@@ -4295,6 +4603,7 @@ void DeclarationVisitor::CheckEquivalenceSets() {
 bool DeclarationVisitor::Pre(const parser::SaveStmt &x) {
   if (x.v.empty()) {
     saveInfo_.saveAll = currStmtSource();
+    currScope().set_hasSAVE();
   } else {
     for (const parser::SavedEntity &y : x.v) {
       auto kind{std::get<parser::SavedEntity::Kind>(y.t)};
@@ -4322,6 +4631,7 @@ void DeclarationVisitor::CheckSaveStmts() {
           *saveInfo_.saveAll, "Global SAVE statement"_en_US);
     } else if (auto msg{CheckSaveAttr(*symbol)}) {
       Say(name, std::move(*msg));
+      context().SetError(*symbol);
     } else {
       SetSaveAttr(*symbol);
     }
@@ -4340,9 +4650,8 @@ void DeclarationVisitor::CheckSaveStmts() {
               " common block name '%s'"_err_en_US);
         }
       } else {
-        for (const Symbol &object :
-            symbol->get<CommonBlockDetails>().objects()) {
-          SetSaveAttr(*const_cast<Symbol *>(&object));
+        for (auto &object : symbol->get<CommonBlockDetails>().objects()) {
+          SetSaveAttr(*object);
         }
       }
     }
@@ -4362,22 +4671,23 @@ void DeclarationVisitor::CheckSaveStmts() {
 // If SAVE attribute can't be set on symbol, return error message.
 std::optional<MessageFixedText> DeclarationVisitor::CheckSaveAttr(
     const Symbol &symbol) {
-  if (symbol.IsDummy()) {
+  if (IsDummy(symbol)) {
     return "SAVE attribute may not be applied to dummy argument '%s'"_err_en_US;
   } else if (symbol.IsFuncResult()) {
     return "SAVE attribute may not be applied to function result '%s'"_err_en_US;
   } else if (symbol.has<ProcEntityDetails>() &&
       !symbol.attrs().test(Attr::POINTER)) {
     return "Procedure '%s' with SAVE attribute must also have POINTER attribute"_err_en_US;
+  } else if (IsAutomatic(symbol)) {
+    return "SAVE attribute may not be applied to automatic data object '%s'"_err_en_US;
   } else {
     return std::nullopt;
   }
 }
 
-// Instead of setting SAVE attribute, record the name in saveInfo_.entities.
+// Record SAVEd names in saveInfo_.entities.
 Attrs DeclarationVisitor::HandleSaveName(const SourceName &name, Attrs attrs) {
   if (attrs.test(Attr::SAVE)) {
-    attrs.set(Attr::SAVE, false);
     AddSaveName(saveInfo_.entities, name);
   }
   return attrs;
@@ -4425,7 +4735,7 @@ void DeclarationVisitor::CheckCommonBlocks() {
     } else if (attrs.test(Attr::BIND_C)) {
       Say(name,
           "Variable '%s' with BIND attribute may not appear in a COMMON block"_err_en_US);
-    } else if (symbol->IsDummy()) {
+    } else if (IsDummy(*symbol)) {
       Say(name,
           "Dummy argument '%s' may not appear in a COMMON block"_err_en_US);
     } else if (symbol->IsFuncResult()) {
@@ -4551,7 +4861,7 @@ bool DeclarationVisitor::PassesLocalityChecks(
     return false;
   }
   if (const DeclTypeSpec * type{symbol.GetType()}) {
-    if (type->IsPolymorphic() && symbol.IsDummy() &&
+    if (type->IsPolymorphic() && IsDummy(symbol) &&
         !IsPointer(symbol)) { // C1128
       SayWithDecl(name, symbol,
           "Nonpointer polymorphic argument '%s' not allowed in a "
@@ -4642,7 +4952,7 @@ void DeclarationVisitor::SetType(
       SetType(name,
           currScope().MakeCharacterType(std::move(length), std::move(kind)));
       return;
-    } else {
+    } else { // C753
       Say(name,
           "A length specifier cannot be used to declare the non-character entity '%s'"_err_en_US);
     }
@@ -4655,9 +4965,11 @@ void DeclarationVisitor::SetType(
   } else if (!symbol.test(Symbol::Flag::Implicit)) {
     SayWithDecl(
         name, symbol, "The type of '%s' has already been declared"_err_en_US);
+    context().SetError(symbol);
   } else if (type != *prevType) {
     SayWithDecl(name, symbol,
         "The type of '%s' has already been implicitly declared"_err_en_US);
+    context().SetError(symbol);
   } else {
     symbol.set(Symbol::Flag::Implicit, false);
   }
@@ -4665,7 +4977,7 @@ void DeclarationVisitor::SetType(
 
 std::optional<DerivedTypeSpec> DeclarationVisitor::ResolveDerivedType(
     const parser::Name &name) {
-  Symbol *symbol{FindSymbol(name)};
+  Symbol *symbol{FindSymbol(NonDerivedTypeScope(), name)};
   if (!symbol || symbol->has<UnknownDetails>()) {
     if (allowForwardReferenceToDerivedType()) {
       if (!symbol) {
@@ -4741,7 +5053,7 @@ Symbol *DeclarationVisitor::MakeTypeSymbol(
     const SourceName &name, Details &&details) {
   Scope &derivedType{currScope()};
   CHECK(derivedType.IsDerivedType());
-  if (auto *symbol{FindInScope(derivedType, name)}) {
+  if (auto *symbol{FindInScope(derivedType, name)}) { // C742
     Say2(name,
         "Type parameter, component, or procedure binding '%s'"
         " already defined in this type"_err_en_US,
@@ -4770,21 +5082,23 @@ bool DeclarationVisitor::OkToAddComponent(
   for (const Scope *scope{&currScope()}; scope;) {
     CHECK(scope->IsDerivedType());
     if (auto *prev{FindInScope(*scope, name)}) {
-      auto msg{""_en_US};
-      if (extends) {
-        msg = "Type cannot be extended as it has a component named"
-              " '%s'"_err_en_US;
-      } else if (prev->test(Symbol::Flag::ParentComp)) {
-        msg = "'%s' is a parent type of this type and so cannot be"
-              " a component"_err_en_US;
-      } else if (scope != &currScope()) {
-        msg = "Component '%s' is already declared in a parent of this"
-              " derived type"_err_en_US;
-      } else {
-        msg = "Component '%s' is already declared in this"
-              " derived type"_err_en_US;
+      if (!prev->test(Symbol::Flag::Error)) {
+        auto msg{""_en_US};
+        if (extends) {
+          msg = "Type cannot be extended as it has a component named"
+                " '%s'"_err_en_US;
+        } else if (prev->test(Symbol::Flag::ParentComp)) {
+          msg = "'%s' is a parent type of this type and so cannot be"
+                " a component"_err_en_US;
+        } else if (scope != &currScope()) {
+          msg = "Component '%s' is already declared in a parent of this"
+                " derived type"_err_en_US;
+        } else {
+          msg = "Component '%s' is already declared in this"
+                " derived type"_err_en_US;
+        }
+        Say2(name, std::move(msg), *prev, "Previous declaration of '%s'"_en_US);
       }
-      Say2(name, std::move(msg), *prev, "Previous declaration of '%s'"_en_US);
       return false;
     }
     if (scope == &currScope() && extends) {
@@ -4927,23 +5241,32 @@ bool ConstructVisitor::Pre(const parser::DataImpliedDo &x) {
   return false;
 }
 
+// Sets InDataStmt flag on a variable (or misidentified function) in a DATA
+// statement so that the predicate IsInitialized(base symbol) will be true
+// during semantic analysis before the symbol's initializer is constructed.
+bool ConstructVisitor::Pre(const parser::DataIDoObject &x) {
+  std::visit(
+      common::visitors{
+          [&](const parser::Scalar<Indirection<parser::Designator>> &y) {
+            Walk(y.thing.value());
+            const parser::Name &first{parser::GetFirstName(y.thing.value())};
+            if (first.symbol) {
+              first.symbol->set(Symbol::Flag::InDataStmt);
+            }
+          },
+          [&](const Indirection<parser::DataImpliedDo> &y) { Walk(y.value()); },
+      },
+      x.u);
+  return false;
+}
+
 bool ConstructVisitor::Pre(const parser::DataStmtObject &x) {
   std::visit(common::visitors{
                  [&](const Indirection<parser::Variable> &y) {
                    Walk(y.value());
-                   if (const auto *designator{
-                           std::get_if<Indirection<parser::Designator>>(
-                               &y.value().u)}) {
-                     if (const parser::Name *
-                         name{ResolveDesignator(designator->value())}) {
-                       if (name->symbol) {
-                         name->symbol->set(Symbol::Flag::InDataStmt);
-                       }
-                     }
-                     // TODO check C874 - C881
-                   } else {
-                     // TODO report C875 error: variable is not a designator
-                     // here?
+                   const parser::Name &first{parser::GetFirstName(y.value())};
+                   if (first.symbol) {
+                     first.symbol->set(Symbol::Flag::InDataStmt);
                    }
                  },
                  [&](const parser::DataImpliedDo &y) {
@@ -5081,6 +5404,12 @@ void ConstructVisitor::Post(const parser::SelectTypeStmt &x) {
     // This isn't a name in the current scope, it is in each TypeGuardStmt
     MakePlaceholder(*name, MiscDetails::Kind::SelectTypeAssociateName);
     association.name = &*name;
+    auto exprType{association.selector.expr->GetType()};
+    if (exprType && !exprType->IsPolymorphic()) { // C1159
+      Say(association.selector.source,
+          "Selector '%s' in SELECT TYPE statement must be "
+          "polymorphic"_err_en_US);
+    }
   } else {
     if (const Symbol *
         whole{UnwrapWholeSymbolDataRef(association.selector.expr)}) {
@@ -5090,11 +5419,27 @@ void ConstructVisitor::Post(const parser::SelectTypeStmt &x) {
             "Selector is not a variable"_err_en_US);
         association = {};
       }
+      if (const DeclTypeSpec * type{whole->GetType()}) {
+        if (!type->IsPolymorphic()) { // C1159
+          Say(association.selector.source,
+              "Selector '%s' in SELECT TYPE statement must be "
+              "polymorphic"_err_en_US);
+        }
+      }
     } else {
       Say(association.selector.source, // C1157
           "Selector is not a named variable: 'associate-name =>' is required"_err_en_US);
       association = {};
     }
+  }
+}
+
+void ConstructVisitor::Post(const parser::SelectRankStmt &x) {
+  auto &association{GetCurrentAssociation()};
+  if (const std::optional<parser::Name> &name{std::get<1>(x.t)}) {
+    // This isn't a name in the current scope, it is in each SelectRankCaseStmt
+    MakePlaceholder(*name, MiscDetails::Kind::SelectRankAssociateName);
+    association.name = &*name;
   }
 }
 
@@ -5106,6 +5451,14 @@ void ConstructVisitor::Post(const parser::SelectTypeConstruct::TypeCase &) {
   PopScope();
 }
 
+bool ConstructVisitor::Pre(const parser::SelectRankConstruct::RankCase &) {
+  PushScope(Scope::Kind::Block, nullptr);
+  return true;
+}
+void ConstructVisitor::Post(const parser::SelectRankConstruct::RankCase &) {
+  PopScope();
+}
+
 void ConstructVisitor::Post(const parser::TypeGuardStmt::Guard &x) {
   if (auto *symbol{MakeAssocEntity()}) {
     if (std::holds_alternative<parser::Default>(x.u)) {
@@ -5114,6 +5467,20 @@ void ConstructVisitor::Post(const parser::TypeGuardStmt::Guard &x) {
       symbol->SetType(*type);
     }
     SetAttrsFromAssociation(*symbol);
+  }
+}
+
+void ConstructVisitor::Post(const parser::SelectRankCaseStmt::Rank &x) {
+  if (auto *symbol{MakeAssocEntity()}) {
+    SetTypeFromAssociation(*symbol);
+    SetAttrsFromAssociation(*symbol);
+    if (const auto *init{std::get_if<parser::ScalarIntConstantExpr>(&x.u)}) {
+      MaybeIntExpr expr{EvaluateIntExpr(*init)};
+      if (auto val{evaluate::ToInt64(expr)}) {
+        auto &details{symbol->get<AssocEntityDetails>()};
+        details.set_rank(*val);
+      }
+    }
   }
 }
 
@@ -5367,7 +5734,15 @@ const parser::Name *DeclarationVisitor::ResolveDataRef(
           },
           [&](const Indirection<parser::ArrayElement> &y) {
             Walk(y.value().subscripts);
-            return ResolveDataRef(y.value().base);
+            const parser::Name *name{ResolveDataRef(y.value().base)};
+            if (!name) {
+            } else if (!name->symbol->has<ProcEntityDetails>()) {
+              ConvertToObjectEntity(*name->symbol);
+            } else if (!context().HasError(*name->symbol)) {
+              SayWithDecl(*name, *name->symbol,
+                  "Cannot reference function '%s' as data"_err_en_US);
+            }
+            return name;
           },
           [&](const Indirection<parser::CoindexedNamedObject> &y) {
             Walk(y.value().imageSelector);
@@ -5406,7 +5781,7 @@ const parser::Name *DeclarationVisitor::ResolveName(const parser::Name &name) {
     if (CheckUseError(name)) {
       return nullptr; // reported an error
     }
-    if (symbol->IsDummy() ||
+    if (IsDummy(*symbol) ||
         (!symbol->GetType() && FindCommonBlockContaining(*symbol))) {
       ConvertToObjectEntity(*symbol);
       ApplyImplicitRules(*symbol);
@@ -5495,25 +5870,16 @@ const parser::Name *DeclarationVisitor::FindComponent(
 }
 
 // C764, C765
-void DeclarationVisitor::CheckInitialDataTarget(
+bool DeclarationVisitor::CheckInitialDataTarget(
     const Symbol &pointer, const SomeExpr &expr, SourceName source) {
-  auto &messages{GetFoldingContext().messages()};
-  auto restorer{messages.SetLocation(source)};
-  if (!evaluate::IsInitialDataTarget(expr, &messages)) {
-    Say(source,
-        "Pointer '%s' cannot be initialized with a reference to a designator with non-constant subscripts"_err_en_US,
-        pointer.name());
-    return;
-  }
-  if (pointer.Rank() != expr.Rank()) {
-    Say(source,
-        "Pointer '%s' of rank %d cannot be initialized with a target of different rank (%d)"_err_en_US,
-        pointer.name(), pointer.Rank(), expr.Rank());
-    return;
-  }
-  // TODO: check type compatibility
-  // TODO: check non-deferred type parameter values
-  // TODO: check contiguity if pointer is CONTIGUOUS
+  auto &context{GetFoldingContext()};
+  auto restorer{context.messages().SetLocation(source)};
+  auto dyType{evaluate::DynamicType::From(pointer)};
+  CHECK(dyType);
+  auto designator{evaluate::TypedWrapper<evaluate::Designator>(
+      *dyType, evaluate::DataRef{pointer})};
+  CHECK(designator);
+  return CheckInitialTarget(context, *designator, expr);
 }
 
 void DeclarationVisitor::CheckInitialProcTarget(
@@ -5542,52 +5908,42 @@ void DeclarationVisitor::CheckInitialProcTarget(
 
 void DeclarationVisitor::Initialization(const parser::Name &name,
     const parser::Initialization &init, bool inComponentDecl) {
-  if (!name.symbol) {
-    return;
-  }
-  if (std::holds_alternative<parser::InitialDataTarget>(init.u)) {
-    // Defer analysis to the end of the specification parts so that forward
-    // references work better.
-    return;
-  }
   // Traversal of the initializer was deferred to here so that the
   // symbol being declared can be available for use in the expression, e.g.:
   //   real, parameter :: x = tiny(x)
-  Walk(init.u);
+  if (!name.symbol) {
+    return;
+  }
   Symbol &ultimate{name.symbol->GetUltimate()};
+  if (IsAllocatable(ultimate)) {
+    Say(name, "Allocatable component '%s' cannot be initialized"_err_en_US);
+    return;
+  }
+  if (std::holds_alternative<parser::InitialDataTarget>(init.u)) {
+    // Defer analysis further to the end of the specification parts so that
+    // forward references and attribute checks (e.g., SAVE) work better.
+    // TODO: But pointer initializers of components in named constants of
+    // derived types may still need more attention.
+    return;
+  }
   if (auto *details{ultimate.detailsIf<ObjectEntityDetails>()}) {
     // TODO: check C762 - all bounds and type parameters of component
     // are colons or constant expressions if component is initialized
-    bool isPointer{false};
+    bool isNullPointer{false};
     std::visit(
         common::visitors{
             [&](const parser::ConstantExpr &expr) {
-              if (inComponentDecl) {
-                // Can't convert to type of component, which might not yet
-                // be known; that's done later during instantiation.
-                if (MaybeExpr value{EvaluateExpr(expr)}) {
-                  details->set_init(std::move(*value));
-                }
-              } else {
-                if (MaybeExpr folded{EvaluateConvertedExpr(
-                        ultimate, expr, expr.thing.value().source)}) {
-                  details->set_init(std::move(*folded));
-                }
-              }
+              NonPointerInitialization(name, expr, inComponentDecl);
             },
             [&](const parser::NullInit &) {
-              isPointer = true;
+              isNullPointer = true;
               details->set_init(SomeExpr{evaluate::NullPointer{}});
             },
-            [&](const parser::InitialDataTarget &initExpr) {
-              isPointer = true;
-              if (MaybeExpr expr{EvaluateExpr(initExpr)}) {
-                CheckInitialDataTarget(
-                    ultimate, *expr, initExpr.value().source);
-                details->set_init(std::move(*expr));
-              }
+            [&](const parser::InitialDataTarget &) {
+              DIE("InitialDataTarget can't appear here");
             },
             [&](const std::list<Indirection<parser::DataStmtValue>> &) {
+              // TODO: Need to Walk(init.u); when implementing this case
               if (inComponentDecl) {
                 Say(name,
                     "Component '%s' initialized with DATA statement values"_err_en_US);
@@ -5597,18 +5953,14 @@ void DeclarationVisitor::Initialization(const parser::Name &name,
             },
         },
         init.u);
-    if (isPointer) {
+    if (isNullPointer) {
       if (!IsPointer(ultimate)) {
         Say(name,
-            "Non-pointer component '%s' initialized with pointer target"_err_en_US);
+            "Non-pointer component '%s' initialized with null pointer"_err_en_US);
       }
-    } else {
-      if (IsPointer(ultimate)) {
-        Say(name,
-            "Object pointer component '%s' initialized with non-pointer expression"_err_en_US);
-      } else if (IsAllocatable(ultimate)) {
-        Say(name, "Allocatable component '%s' cannot be initialized"_err_en_US);
-      }
+    } else if (IsPointer(ultimate)) {
+      Say(name,
+          "Object pointer component '%s' initialized with non-pointer expression"_err_en_US);
     }
   }
 }
@@ -5617,17 +5969,21 @@ void DeclarationVisitor::PointerInitialization(
     const parser::Name &name, const parser::InitialDataTarget &target) {
   if (name.symbol) {
     Symbol &ultimate{name.symbol->GetUltimate()};
-    if (IsPointer(ultimate)) {
-      if (auto *details{ultimate.detailsIf<ObjectEntityDetails>()}) {
-        CHECK(!details->init());
-        Walk(target);
-        if (MaybeExpr expr{EvaluateExpr(target)}) {
-          CheckInitialDataTarget(ultimate, *expr, target.value().source);
-          details->set_init(std::move(*expr));
+    if (!context().HasError(ultimate)) {
+      if (IsPointer(ultimate)) {
+        if (auto *details{ultimate.detailsIf<ObjectEntityDetails>()}) {
+          CHECK(!details->init());
+          Walk(target);
+          if (MaybeExpr expr{EvaluateExpr(target)}) {
+            CheckInitialDataTarget(ultimate, *expr, target.value().source);
+            details->set_init(std::move(*expr));
+          }
         }
+      } else {
+        Say(name,
+            "'%s' is not a pointer but is initialized like one"_err_en_US);
+        context().SetError(ultimate);
       }
-    } else {
-      Say(name, "'%s' is not a pointer but is initialized like one"_err_en_US);
     }
   }
 }
@@ -5635,22 +5991,50 @@ void DeclarationVisitor::PointerInitialization(
     const parser::Name &name, const parser::ProcPointerInit &target) {
   if (name.symbol) {
     Symbol &ultimate{name.symbol->GetUltimate()};
-    if (IsProcedurePointer(ultimate)) {
-      auto &details{ultimate.get<ProcEntityDetails>()};
-      CHECK(!details.init());
-      Walk(target);
-      if (const auto *targetName{std::get_if<parser::Name>(&target.u)}) {
-        CheckInitialProcTarget(ultimate, *targetName, name.source);
-        if (targetName->symbol) {
-          details.set_init(*targetName->symbol);
+    if (!context().HasError(ultimate)) {
+      if (IsProcedurePointer(ultimate)) {
+        auto &details{ultimate.get<ProcEntityDetails>()};
+        CHECK(!details.init());
+        Walk(target);
+        if (const auto *targetName{std::get_if<parser::Name>(&target.u)}) {
+          CheckInitialProcTarget(ultimate, *targetName, name.source);
+          if (targetName->symbol) {
+            details.set_init(*targetName->symbol);
+          }
+        } else {
+          details.set_init(nullptr); // explicit NULL()
         }
       } else {
-        details.set_init(nullptr); // explicit NULL()
+        Say(name,
+            "'%s' is not a procedure pointer but is initialized "
+            "like one"_err_en_US);
+        context().SetError(ultimate);
       }
-    } else {
-      Say(name,
-          "'%s' is not a procedure pointer but is initialized "
-          "like one"_err_en_US);
+    }
+  }
+}
+
+void DeclarationVisitor::NonPointerInitialization(const parser::Name &name,
+    const parser::ConstantExpr &expr, bool inComponentDecl) {
+  if (name.symbol) {
+    Symbol &ultimate{name.symbol->GetUltimate()};
+    if (IsPointer(ultimate)) {
+      Say(name, "'%s' is a pointer but is not initialized like one"_err_en_US);
+    } else if (auto *details{ultimate.detailsIf<ObjectEntityDetails>()}) {
+      CHECK(!details->init());
+      Walk(expr);
+      // TODO: check C762 - all bounds and type parameters of component
+      // are colons or constant expressions if component is initialized
+      if (inComponentDecl) {
+        // Can't convert to type of component, which might not yet
+        // be known; that's done later during instantiation.
+        if (MaybeExpr value{EvaluateExpr(expr)}) {
+          details->set_init(std::move(*value));
+        }
+      } else if (MaybeExpr folded{EvaluateConvertedExpr(
+                     ultimate, expr, expr.thing.value().source)}) {
+        details->set_init(std::move(*folded));
+      }
     }
   }
 }
@@ -5669,7 +6053,7 @@ void ResolveNamesVisitor::HandleCall(
 void ResolveNamesVisitor::HandleProcedureName(
     Symbol::Flag flag, const parser::Name &name) {
   CHECK(flag == Symbol::Flag::Function || flag == Symbol::Flag::Subroutine);
-  auto *symbol{FindSymbol(name)};
+  auto *symbol{FindSymbol(NonDerivedTypeScope(), name)};
   if (!symbol) {
     if (context().intrinsics().IsIntrinsic(name.source.ToString())) {
       symbol =
@@ -5741,7 +6125,7 @@ void ResolveNamesVisitor::NoteExecutablePartCall(
         ConvertToProcEntity(*symbol);
         if (symbol->has<ProcEntityDetails>()) {
           symbol->set(flag);
-          if (symbol->IsDummy()) {
+          if (IsDummy(*symbol)) {
             symbol->attrs().set(Attr::EXTERNAL);
           }
           ApplyImplicitRules(*symbol);
@@ -5855,7 +6239,8 @@ bool ResolveNamesVisitor::Pre(const parser::SpecificationPart &x) {
   Walk(std::get<1>(x.t));
   Walk(std::get<2>(x.t));
   Walk(std::get<3>(x.t));
-  const std::list<parser::DeclarationConstruct> &decls{std::get<4>(x.t)};
+  Walk(std::get<4>(x.t));
+  const std::list<parser::DeclarationConstruct> &decls{std::get<5>(x.t)};
   for (const auto &decl : decls) {
     if (const auto *spec{
             std::get_if<parser::SpecificationConstruct>(&decl.u)}) {
@@ -5863,7 +6248,7 @@ bool ResolveNamesVisitor::Pre(const parser::SpecificationPart &x) {
     }
   }
   Walk(decls);
-  FinishSpecificationPart();
+  FinishSpecificationPart(decls);
   return false;
 }
 
@@ -5920,7 +6305,8 @@ void ResolveNamesVisitor::CreateGeneric(const parser::GenericSpec &x) {
   info.Resolve(&MakeSymbol(symbolName, Attrs{}, std::move(genericDetails)));
 }
 
-void ResolveNamesVisitor::FinishSpecificationPart() {
+void ResolveNamesVisitor::FinishSpecificationPart(
+    const std::list<parser::DeclarationConstruct> &decls) {
   badStmtFuncFound_ = false;
   CheckImports();
   bool inModule{currScope().kind() == Scope::Kind::Module};
@@ -5933,16 +6319,52 @@ void ResolveNamesVisitor::FinishSpecificationPart() {
       CheckGenericProcedures(symbol);
     }
     if (inModule && symbol.attrs().test(Attr::EXTERNAL) &&
-        !symbol.test(Symbol::Flag::Function)) {
+        !symbol.test(Symbol::Flag::Function) &&
+        !symbol.test(Symbol::Flag::Subroutine)) {
       // in a module, external proc without return type is subroutine
-      symbol.set(Symbol::Flag::Subroutine);
+      symbol.set(
+          symbol.GetType() ? Symbol::Flag::Function : Symbol::Flag::Subroutine);
     }
   }
   currScope().InstantiateDerivedTypes(context());
+  for (const auto &decl : decls) {
+    if (const auto *statement{std::get_if<
+            parser::Statement<common::Indirection<parser::StmtFunctionStmt>>>(
+            &decl.u)}) {
+      AnalyzeStmtFunctionStmt(statement->statement.value());
+    }
+  }
   // TODO: what about instantiations in BLOCK?
   CheckSaveStmts();
   CheckCommonBlocks();
   CheckEquivalenceSets();
+}
+
+// Analyze the bodies of statement functions now that the symbols in this
+// specification part have been fully declared and implicitly typed.
+void ResolveNamesVisitor::AnalyzeStmtFunctionStmt(
+    const parser::StmtFunctionStmt &stmtFunc) {
+  Symbol *symbol{std::get<parser::Name>(stmtFunc.t).symbol};
+  if (!symbol || !symbol->has<SubprogramDetails>()) {
+    return;
+  }
+  auto &details{symbol->get<SubprogramDetails>()};
+  auto expr{AnalyzeExpr(
+      context(), std::get<parser::Scalar<parser::Expr>>(stmtFunc.t))};
+  if (!expr) {
+    context().SetError(*symbol);
+    return;
+  }
+  if (auto type{evaluate::DynamicType::From(*symbol)}) {
+    auto converted{ConvertToType(*type, std::move(*expr))};
+    if (!converted) {
+      context().SetError(*symbol);
+      return;
+    }
+    details.set_stmtFunction(std::move(*converted));
+  } else {
+    details.set_stmtFunction(std::move(*expr));
+  }
 }
 
 void ResolveNamesVisitor::CheckImports() {
@@ -6076,7 +6498,12 @@ bool ResolveNamesVisitor::Pre(const parser::ProgramUnit &x) {
   inExecutionPart_ = true;
   ResolveExecutionParts(root);
   inExecutionPart_ = false;
-  ResolveOmpParts(x);
+  if (context().IsEnabled(common::LanguageFeature::OpenACC)) {
+    ResolveAccParts(x);
+  }
+  if (context().IsEnabled(common::LanguageFeature::OpenMP)) {
+    ResolveOmpParts(x);
+  }
   return false;
 }
 
@@ -6128,8 +6555,8 @@ void ResolveNamesVisitor::ResolveSpecificationParts(ProgramTree &node) {
       node.stmt());
   Walk(node.spec());
   // If this is a function, convert result to an object. This is to prevent the
-  // result to be converted later to a function symbol if it is called inside
-  // the function.
+  // result from being converted later to a function symbol if it is called
+  // inside the function.
   // If the result is function pointer, then ConvertToObjectEntity will not
   // convert the result to an object, and calling the symbol inside the function
   // will result in calls to the result pointer.
@@ -6269,45 +6696,304 @@ private:
   bool pushedScope_{false};
 };
 
+bool AccAttributeVisitor::Pre(const parser::OpenACCBlockConstruct &x) {
+  const auto &beginBlockDir{std::get<parser::AccBeginBlockDirective>(x.t)};
+  const auto &blockDir{std::get<parser::AccBlockDirective>(beginBlockDir.t)};
+  switch (blockDir.v) {
+  case llvm::acc::Directive::ACCD_data:
+  case llvm::acc::Directive::ACCD_host_data:
+  case llvm::acc::Directive::ACCD_kernels:
+  case llvm::acc::Directive::ACCD_parallel:
+  case llvm::acc::Directive::ACCD_serial:
+    PushContext(blockDir.source, blockDir.v);
+    break;
+  default:
+    break;
+  }
+  ClearDataSharingAttributeObjects();
+  return true;
+}
+
+bool AccAttributeVisitor::Pre(const parser::OpenACCLoopConstruct &x) {
+  const auto &beginDir{std::get<parser::AccBeginLoopDirective>(x.t)};
+  const auto &loopDir{std::get<parser::AccLoopDirective>(beginDir.t)};
+  const auto &clauseList{std::get<parser::AccClauseList>(beginDir.t)};
+  if (loopDir.v == llvm::acc::Directive::ACCD_loop) {
+    PushContext(loopDir.source, loopDir.v);
+  }
+  ClearDataSharingAttributeObjects();
+  SetContextAssociatedLoopLevel(GetAssociatedLoopLevelFromClauses(clauseList));
+  PrivatizeAssociatedLoopIndex(x);
+  return true;
+}
+
+bool AccAttributeVisitor::Pre(const parser::OpenACCStandaloneConstruct &x) {
+  const auto &standaloneDir{std::get<parser::AccStandaloneDirective>(x.t)};
+  switch (standaloneDir.v) {
+  case llvm::acc::Directive::ACCD_cache:
+  case llvm::acc::Directive::ACCD_enter_data:
+  case llvm::acc::Directive::ACCD_exit_data:
+  case llvm::acc::Directive::ACCD_init:
+  case llvm::acc::Directive::ACCD_set:
+  case llvm::acc::Directive::ACCD_shutdown:
+  case llvm::acc::Directive::ACCD_update:
+    PushContext(standaloneDir.source, standaloneDir.v);
+    break;
+  default:
+    break;
+  }
+  ClearDataSharingAttributeObjects();
+  return true;
+}
+
+bool AccAttributeVisitor::Pre(const parser::OpenACCCombinedConstruct &x) {
+  const auto &beginBlockDir{std::get<parser::AccBeginCombinedDirective>(x.t)};
+  const auto &combinedDir{
+      std::get<parser::AccCombinedDirective>(beginBlockDir.t)};
+  switch (combinedDir.v) {
+  case llvm::acc::Directive::ACCD_kernels_loop:
+  case llvm::acc::Directive::ACCD_parallel_loop:
+  case llvm::acc::Directive::ACCD_serial_loop:
+    PushContext(combinedDir.source, combinedDir.v);
+    break;
+  default:
+    break;
+  }
+  ClearDataSharingAttributeObjects();
+  return true;
+}
+
+int64_t AccAttributeVisitor::GetAssociatedLoopLevelFromClauses(
+    const parser::AccClauseList &x) {
+  int64_t collapseLevel{0};
+  for (const auto &clause : x.v) {
+    if (const auto *collapseClause{
+            std::get_if<parser::AccClause::Collapse>(&clause.u)}) {
+      if (const auto v{evaluate::ToInt64(
+              resolver_.EvaluateIntExpr(collapseClause->v))}) {
+        collapseLevel = *v;
+      }
+    }
+  }
+
+  if (collapseLevel) {
+    return collapseLevel;
+  }
+  return 1; // default is outermost loop
+}
+
+void AccAttributeVisitor::PrivatizeAssociatedLoopIndex(
+    const parser::OpenACCLoopConstruct &x) {
+  int64_t level{GetContext().associatedLoopLevel};
+  if (level <= 0) { // collpase value was negative or 0
+    return;
+  }
+  Symbol::Flag ivDSA{Symbol::Flag::AccPrivate};
+
+  const auto &outer{std::get<std::optional<parser::DoConstruct>>(x.t)};
+  for (const parser::DoConstruct *loop{&*outer}; loop && level > 0; --level) {
+    // go through all the nested do-loops and resolve index variables
+    const parser::Name &iv{GetLoopIndex(*loop)};
+    if (auto *symbol{ResolveAcc(iv, ivDSA, currScope())}) {
+      symbol->set(Symbol::Flag::AccPreDetermined);
+      iv.symbol = symbol; // adjust the symbol within region
+      AddToContextObjectWithDSA(*symbol, ivDSA);
+    }
+
+    const auto &block{std::get<parser::Block>(loop->t)};
+    const auto it{block.begin()};
+    loop = it != block.end() ? GetDoConstructIf(*it) : nullptr;
+  }
+  CHECK(level == 0);
+}
+
+void AccAttributeVisitor::Post(const parser::AccDefaultClause &x) {
+  if (!dirContext_.empty()) {
+    switch (x.v) {
+    case parser::AccDefaultClause::Arg::Present:
+      SetContextDefaultDSA(Symbol::Flag::AccPresent);
+      break;
+    case parser::AccDefaultClause::Arg::None:
+      SetContextDefaultDSA(Symbol::Flag::AccNone);
+      break;
+    }
+  }
+}
+
+// For OpenACC constructs, check all the data-refs within the constructs
+// and adjust the symbol for each Name if necessary
+void AccAttributeVisitor::Post(const parser::Name &name) {
+  auto *symbol{name.symbol};
+  if (symbol && !dirContext_.empty() && GetContext().withinConstruct) {
+    if (!symbol->owner().IsDerivedType() && !symbol->has<ProcEntityDetails>() &&
+        !IsObjectWithDSA(*symbol)) {
+      if (Symbol * found{currScope().FindSymbol(name.source)}) {
+        if (symbol != found) {
+          name.symbol = found; // adjust the symbol within region
+        } else if (GetContext().defaultDSA == Symbol::Flag::AccNone) {
+          // 2.5.14.
+          context_.Say(name.source,
+              "The DEFAULT(NONE) clause requires that '%s' must be listed in "
+              "a data-mapping clause"_err_en_US,
+              symbol->name());
+        }
+      }
+    }
+  } // within OpenACC construct
+}
+
+Symbol *AccAttributeVisitor::ResolveAccCommonBlockName(
+    const parser::Name *name) {
+  if (!name) {
+    return nullptr;
+  } else if (auto *prev{
+                 GetContext().scope.parent().FindCommonBlock(name->source)}) {
+    name->symbol = prev;
+    return prev;
+  } else {
+    return nullptr;
+  }
+}
+
+void AccAttributeVisitor::ResolveAccObjectList(
+    const parser::AccObjectList &accObjectList, Symbol::Flag accFlag) {
+  for (const auto &accObject : accObjectList.v) {
+    ResolveAccObject(accObject, accFlag);
+  }
+}
+
+void AccAttributeVisitor::ResolveAccObject(
+    const parser::AccObject &accObject, Symbol::Flag accFlag) {
+  std::visit(
+      common::visitors{
+          [&](const parser::Designator &designator) {
+            if (const auto *name{GetDesignatorNameIfDataRef(designator)}) {
+              if (auto *symbol{ResolveAcc(*name, accFlag, currScope())}) {
+                AddToContextObjectWithDSA(*symbol, accFlag);
+                if (dataSharingAttributeFlags.test(accFlag)) {
+                  CheckMultipleAppearances(*name, *symbol, accFlag);
+                }
+              }
+            } else if (const auto *designatorName{
+                           resolver_.ResolveDesignator(designator)};
+                       designatorName->symbol) {
+              // Array sections to be changed to substrings as needed
+              if (AnalyzeExpr(context_, designator)) {
+                if (std::holds_alternative<parser::Substring>(designator.u)) {
+                  context_.Say(designator.source,
+                      "Substrings are not allowed on OpenACC "
+                      "directives or clauses"_err_en_US);
+                }
+              }
+              // other checks, more TBD
+              if (const auto *details{designatorName->symbol
+                                          ->detailsIf<ObjectEntityDetails>()}) {
+                if (details->IsArray()) {
+                  // TODO: check Array Sections
+                } else if (designatorName->symbol->owner().IsDerivedType()) {
+                  // TODO: check Structure Component
+                }
+              }
+            }
+          },
+          [&](const parser::Name &name) { // common block
+            if (auto *symbol{ResolveAccCommonBlockName(&name)}) {
+              CheckMultipleAppearances(
+                  name, *symbol, Symbol::Flag::AccCommonBlock);
+              for (auto &object : symbol->get<CommonBlockDetails>().objects()) {
+                if (auto *resolvedObject{
+                        ResolveAcc(*object, accFlag, currScope())}) {
+                  AddToContextObjectWithDSA(*resolvedObject, accFlag);
+                }
+              }
+            } else {
+              context_.Say(name.source,
+                  "COMMON block must be declared in the same scoping unit "
+                  "in which the OpenACC directive or clause appears"_err_en_US);
+            }
+          },
+      },
+      accObject.u);
+}
+
+Symbol *AccAttributeVisitor::ResolveAcc(
+    const parser::Name &name, Symbol::Flag accFlag, Scope &scope) {
+  if (accFlagsRequireNewSymbol.test(accFlag)) {
+    return DeclarePrivateAccessEntity(name, accFlag, scope);
+  } else {
+    return DeclareOrMarkOtherAccessEntity(name, accFlag);
+  }
+}
+
+Symbol *AccAttributeVisitor::ResolveAcc(
+    Symbol &symbol, Symbol::Flag accFlag, Scope &scope) {
+  if (accFlagsRequireNewSymbol.test(accFlag)) {
+    return DeclarePrivateAccessEntity(symbol, accFlag, scope);
+  } else {
+    return DeclareOrMarkOtherAccessEntity(symbol, accFlag);
+  }
+}
+
+Symbol *AccAttributeVisitor::DeclareOrMarkOtherAccessEntity(
+    const parser::Name &name, Symbol::Flag accFlag) {
+  Symbol *prev{currScope().FindSymbol(name.source)};
+  if (!name.symbol || !prev) {
+    return nullptr;
+  } else if (prev != name.symbol) {
+    name.symbol = prev;
+  }
+  return DeclareOrMarkOtherAccessEntity(*prev, accFlag);
+}
+
+Symbol *AccAttributeVisitor::DeclareOrMarkOtherAccessEntity(
+    Symbol &object, Symbol::Flag accFlag) {
+  if (accFlagsRequireMark.test(accFlag)) {
+    object.set(accFlag);
+  }
+  return &object;
+}
+
+static bool WithMultipleAppearancesAccException(
+    const Symbol &symbol, Symbol::Flag flag) {
+  return false; // Place holder
+}
+
+void AccAttributeVisitor::CheckMultipleAppearances(
+    const parser::Name &name, const Symbol &symbol, Symbol::Flag accFlag) {
+  const auto *target{&symbol};
+  if (accFlagsRequireNewSymbol.test(accFlag)) {
+    if (const auto *details{symbol.detailsIf<HostAssocDetails>()}) {
+      target = &details->symbol();
+    }
+  }
+  if (HasDataSharingAttributeObject(*target) &&
+      !WithMultipleAppearancesAccException(symbol, accFlag)) {
+    context_.Say(name.source,
+        "'%s' appears in more than one data-sharing clause "
+        "on the same OpenACC directive"_err_en_US,
+        name.ToString());
+  } else {
+    AddDataSharingAttributeObject(*target);
+  }
+}
+
 bool OmpAttributeVisitor::Pre(const parser::OpenMPBlockConstruct &x) {
   const auto &beginBlockDir{std::get<parser::OmpBeginBlockDirective>(x.t)};
   const auto &beginDir{std::get<parser::OmpBlockDirective>(beginBlockDir.t)};
   switch (beginDir.v) {
-  case parser::OmpBlockDirective::Directive::Master:
-    PushContext(beginDir.source, OmpDirective::MASTER);
-    break;
-  case parser::OmpBlockDirective::Directive::Ordered:
-    PushContext(beginDir.source, OmpDirective::ORDERED);
-    break;
-  case parser::OmpBlockDirective::Directive::Parallel:
-    PushContext(beginDir.source, OmpDirective::PARALLEL);
-    break;
-  case parser::OmpBlockDirective::Directive::Single:
-    PushContext(beginDir.source, OmpDirective::SINGLE);
-    break;
-  case parser::OmpBlockDirective::Directive::Target:
-    PushContext(beginDir.source, OmpDirective::TARGET);
-    break;
-  case parser::OmpBlockDirective::Directive::TargetData:
-    PushContext(beginDir.source, OmpDirective::TARGET_DATA);
-    break;
-  case parser::OmpBlockDirective::Directive::Task:
-    PushContext(beginDir.source, OmpDirective::TASK);
-    break;
-  case parser::OmpBlockDirective::Directive::Teams:
-    PushContext(beginDir.source, OmpDirective::TEAMS);
-    break;
-  case parser::OmpBlockDirective::Directive::Workshare:
-    PushContext(beginDir.source, OmpDirective::WORKSHARE);
-    break;
-  case parser::OmpBlockDirective::Directive::ParallelWorkshare:
-    PushContext(beginDir.source, OmpDirective::PARALLEL_WORKSHARE);
-    break;
-  case parser::OmpBlockDirective::Directive::TargetTeams:
-    PushContext(beginDir.source, OmpDirective::TARGET_TEAMS);
-    break;
-  case parser::OmpBlockDirective::Directive::TargetParallel:
-    PushContext(beginDir.source, OmpDirective::TARGET_PARALLEL);
+  case llvm::omp::Directive::OMPD_master:
+  case llvm::omp::Directive::OMPD_ordered:
+  case llvm::omp::Directive::OMPD_parallel:
+  case llvm::omp::Directive::OMPD_single:
+  case llvm::omp::Directive::OMPD_target:
+  case llvm::omp::Directive::OMPD_target_data:
+  case llvm::omp::Directive::OMPD_task:
+  case llvm::omp::Directive::OMPD_teams:
+  case llvm::omp::Directive::OMPD_workshare:
+  case llvm::omp::Directive::OMPD_parallel_workshare:
+  case llvm::omp::Directive::OMPD_target_teams:
+  case llvm::omp::Directive::OMPD_target_parallel:
+    PushContext(beginDir.source, beginDir.v);
     break;
   default:
     // TODO others
@@ -6322,74 +7008,31 @@ bool OmpAttributeVisitor::Pre(const parser::OpenMPLoopConstruct &x) {
   const auto &beginDir{std::get<parser::OmpLoopDirective>(beginLoopDir.t)};
   const auto &clauseList{std::get<parser::OmpClauseList>(beginLoopDir.t)};
   switch (beginDir.v) {
-  case parser::OmpLoopDirective::Directive::Distribute:
-    PushContext(beginDir.source, OmpDirective::DISTRIBUTE);
+  case llvm::omp::Directive::OMPD_distribute:
+  case llvm::omp::Directive::OMPD_distribute_parallel_do:
+  case llvm::omp::Directive::OMPD_distribute_parallel_do_simd:
+  case llvm::omp::Directive::OMPD_distribute_simd:
+  case llvm::omp::Directive::OMPD_do:
+  case llvm::omp::Directive::OMPD_do_simd:
+  case llvm::omp::Directive::OMPD_parallel_do:
+  case llvm::omp::Directive::OMPD_parallel_do_simd:
+  case llvm::omp::Directive::OMPD_simd:
+  case llvm::omp::Directive::OMPD_target_parallel_do:
+  case llvm::omp::Directive::OMPD_target_parallel_do_simd:
+  case llvm::omp::Directive::OMPD_target_teams_distribute:
+  case llvm::omp::Directive::OMPD_target_teams_distribute_parallel_do:
+  case llvm::omp::Directive::OMPD_target_teams_distribute_parallel_do_simd:
+  case llvm::omp::Directive::OMPD_target_teams_distribute_simd:
+  case llvm::omp::Directive::OMPD_target_simd:
+  case llvm::omp::Directive::OMPD_taskloop:
+  case llvm::omp::Directive::OMPD_taskloop_simd:
+  case llvm::omp::Directive::OMPD_teams_distribute:
+  case llvm::omp::Directive::OMPD_teams_distribute_parallel_do:
+  case llvm::omp::Directive::OMPD_teams_distribute_parallel_do_simd:
+  case llvm::omp::Directive::OMPD_teams_distribute_simd:
+    PushContext(beginDir.source, beginDir.v);
     break;
-  case parser::OmpLoopDirective::Directive::DistributeParallelDo:
-    PushContext(beginDir.source, OmpDirective::DISTRIBUTE_PARALLEL_DO);
-    break;
-  case parser::OmpLoopDirective::Directive::DistributeParallelDoSimd:
-    PushContext(beginDir.source, OmpDirective::DISTRIBUTE_PARALLEL_DO_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::DistributeSimd:
-    PushContext(beginDir.source, OmpDirective::DISTRIBUTE_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::Do:
-    PushContext(beginDir.source, OmpDirective::DO);
-    break;
-  case parser::OmpLoopDirective::Directive::DoSimd:
-    PushContext(beginDir.source, OmpDirective::DO_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::ParallelDo:
-    PushContext(beginDir.source, OmpDirective::PARALLEL_DO);
-    break;
-  case parser::OmpLoopDirective::Directive::ParallelDoSimd:
-    PushContext(beginDir.source, OmpDirective::PARALLEL_DO_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::Simd:
-    PushContext(beginDir.source, OmpDirective::SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::TargetParallelDo:
-    PushContext(beginDir.source, OmpDirective::TARGET_PARALLEL_DO);
-    break;
-  case parser::OmpLoopDirective::Directive::TargetParallelDoSimd:
-    PushContext(beginDir.source, OmpDirective::TARGET_PARALLEL_DO_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::TargetTeamsDistribute:
-    PushContext(beginDir.source, OmpDirective::TARGET_TEAMS_DISTRIBUTE);
-    break;
-  case parser::OmpLoopDirective::Directive::TargetTeamsDistributeParallelDo:
-    PushContext(
-        beginDir.source, OmpDirective::TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO);
-    break;
-  case parser::OmpLoopDirective::Directive::TargetTeamsDistributeParallelDoSimd:
-    PushContext(beginDir.source,
-        OmpDirective::TARGET_TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::TargetTeamsDistributeSimd:
-    PushContext(beginDir.source, OmpDirective::TARGET_TEAMS_DISTRIBUTE_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::TargetSimd:
-    PushContext(beginDir.source, OmpDirective::TARGET_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::Taskloop:
-    PushContext(beginDir.source, OmpDirective::TASKLOOP);
-    break;
-  case parser::OmpLoopDirective::Directive::TaskloopSimd:
-    PushContext(beginDir.source, OmpDirective::TASKLOOP_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::TeamsDistribute:
-    PushContext(beginDir.source, OmpDirective::TEAMS_DISTRIBUTE);
-    break;
-  case parser::OmpLoopDirective::Directive::TeamsDistributeParallelDo:
-    PushContext(beginDir.source, OmpDirective::TEAMS_DISTRIBUTE_PARALLEL_DO);
-    break;
-  case parser::OmpLoopDirective::Directive::TeamsDistributeParallelDoSimd:
-    PushContext(
-        beginDir.source, OmpDirective::TEAMS_DISTRIBUTE_PARALLEL_DO_SIMD);
-    break;
-  case parser::OmpLoopDirective::Directive::TeamsDistributeSimd:
-    PushContext(beginDir.source, OmpDirective::TEAMS_DISTRIBUTE_SIMD);
+  default:
     break;
   }
   ClearDataSharingAttributeObjects();
@@ -6398,23 +7041,15 @@ bool OmpAttributeVisitor::Pre(const parser::OpenMPLoopConstruct &x) {
   return true;
 }
 
-const parser::Name &OmpAttributeVisitor::GetLoopIndex(
-    const parser::DoConstruct &x) {
-  auto &loopControl{x.GetLoopControl().value()};
-  using Bounds = parser::LoopControl::Bounds;
-  const Bounds &bounds{std::get<Bounds>(loopControl.u)};
-  return bounds.name.thing;
-}
-
 void OmpAttributeVisitor::ResolveSeqLoopIndexInParallelOrTaskConstruct(
     const parser::Name &iv) {
-  auto targetIt{ompContext_.rbegin()};
+  auto targetIt{dirContext_.rbegin()};
   for (;; ++targetIt) {
-    if (targetIt == ompContext_.rend()) {
+    if (targetIt == dirContext_.rend()) {
       return;
     }
-    if (parallelSet.test(targetIt->directive) ||
-        taskGeneratingSet.test(targetIt->directive)) {
+    if (llvm::omp::parallelSet.test(targetIt->directive) ||
+        llvm::omp::taskGeneratingSet.test(targetIt->directive)) {
       break;
     }
   }
@@ -6422,7 +7057,7 @@ void OmpAttributeVisitor::ResolveSeqLoopIndexInParallelOrTaskConstruct(
     targetIt++;
     symbol->set(Symbol::Flag::OmpPreDetermined);
     iv.symbol = symbol; // adjust the symbol within region
-    for (auto it{ompContext_.rbegin()}; it != targetIt; ++it) {
+    for (auto it{dirContext_.rbegin()}; it != targetIt; ++it) {
       AddToContextObjectWithDSA(*symbol, Symbol::Flag::OmpPrivate, *it);
     }
   }
@@ -6433,7 +7068,7 @@ void OmpAttributeVisitor::ResolveSeqLoopIndexInParallelOrTaskConstruct(
 //     or task generating construct is private in the innermost such
 //     construct that encloses the loop
 bool OmpAttributeVisitor::Pre(const parser::DoConstruct &x) {
-  if (!ompContext_.empty() && GetContext().withinConstruct) {
+  if (!dirContext_.empty() && GetContext().withinConstruct) {
     if (const auto &iv{GetLoopIndex(x)}; iv.symbol) {
       if (!iv.symbol->test(Symbol::Flag::OmpPreDetermined)) {
         ResolveSeqLoopIndexInParallelOrTaskConstruct(iv);
@@ -6445,20 +7080,10 @@ bool OmpAttributeVisitor::Pre(const parser::DoConstruct &x) {
   return true;
 }
 
-const parser::DoConstruct *OmpAttributeVisitor::GetDoConstructIf(
-    const parser::ExecutionPartConstruct &x) {
-  if (auto *y{std::get_if<parser::ExecutableConstruct>(&x.u)}) {
-    if (auto *z{std::get_if<Indirection<parser::DoConstruct>>(&y->u)}) {
-      return &z->value();
-    }
-  }
-  return nullptr;
-}
-
-std::size_t OmpAttributeVisitor::GetAssociatedLoopLevelFromClauses(
+std::int64_t OmpAttributeVisitor::GetAssociatedLoopLevelFromClauses(
     const parser::OmpClauseList &x) {
-  std::size_t orderedLevel{0};
-  std::size_t collapseLevel{0};
+  std::int64_t orderedLevel{0};
+  std::int64_t collapseLevel{0};
   for (const auto &clause : x.v) {
     if (const auto *orderedClause{
             std::get_if<parser::OmpClause::Ordered>(&clause.u)}) {
@@ -6493,13 +7118,15 @@ std::size_t OmpAttributeVisitor::GetAssociatedLoopLevelFromClauses(
 //   - The loop iteration variables in the associated do-loops of a simd
 //     construct with multiple associated do-loops are lastprivate.
 //
-// TODO: This assumes that the do-loops association for collapse/ordered
-//       clause has been performed (the number of nested do-loops >= n).
+// TODO: revisit after semantics checks are completed for do-loop association of
+//       collapse and ordered
 void OmpAttributeVisitor::PrivatizeAssociatedLoopIndex(
     const parser::OpenMPLoopConstruct &x) {
-  std::size_t level{GetContext().associatedLoopLevel};
+  std::int64_t level{GetContext().associatedLoopLevel};
+  if (level <= 0)
+    return;
   Symbol::Flag ivDSA{Symbol::Flag::OmpPrivate};
-  if (simdSet.test(GetContext().directive)) {
+  if (llvm::omp::simdSet.test(GetContext().directive)) {
     if (level == 1) {
       ivDSA = Symbol::Flag::OmpLinear;
     } else {
@@ -6530,11 +7157,11 @@ bool OmpAttributeVisitor::Pre(const parser::OpenMPSectionsConstruct &x) {
   const auto &beginDir{
       std::get<parser::OmpSectionsDirective>(beginSectionsDir.t)};
   switch (beginDir.v) {
-  case parser::OmpSectionsDirective::Directive::ParallelSections:
-    PushContext(beginDir.source, OmpDirective::PARALLEL_SECTIONS);
+  case llvm::omp::Directive::OMPD_parallel_sections:
+  case llvm::omp::Directive::OMPD_sections:
+    PushContext(beginDir.source, beginDir.v);
     break;
-  case parser::OmpSectionsDirective::Directive::Sections:
-    PushContext(beginDir.source, OmpDirective::SECTIONS);
+  default:
     break;
   }
   ClearDataSharingAttributeObjects();
@@ -6542,14 +7169,14 @@ bool OmpAttributeVisitor::Pre(const parser::OpenMPSectionsConstruct &x) {
 }
 
 bool OmpAttributeVisitor::Pre(const parser::OpenMPThreadprivate &x) {
-  PushContext(x.source, OmpDirective::THREADPRIVATE);
+  PushContext(x.source, llvm::omp::Directive::OMPD_threadprivate);
   const auto &list{std::get<parser::OmpObjectList>(x.t)};
   ResolveOmpObjectList(list, Symbol::Flag::OmpThreadprivate);
   return false;
 }
 
 void OmpAttributeVisitor::Post(const parser::OmpDefaultClause &x) {
-  if (!ompContext_.empty()) {
+  if (!dirContext_.empty()) {
     switch (x.v) {
     case parser::OmpDefaultClause::Type::Private:
       SetContextDefaultDSA(Symbol::Flag::OmpPrivate);
@@ -6571,7 +7198,7 @@ void OmpAttributeVisitor::Post(const parser::OmpDefaultClause &x) {
 // and adjust the symbol for each Name if necessary
 void OmpAttributeVisitor::Post(const parser::Name &name) {
   auto *symbol{name.symbol};
-  if (symbol && !ompContext_.empty() && GetContext().withinConstruct) {
+  if (symbol && !dirContext_.empty() && GetContext().withinConstruct) {
     if (!symbol->owner().IsDerivedType() && !symbol->has<ProcEntityDetails>() &&
         !IsObjectWithDSA(*symbol)) {
       // TODO: create a separate function to go through the rules for
@@ -6589,11 +7216,6 @@ void OmpAttributeVisitor::Post(const parser::Name &name) {
       }
     }
   } // within OpenMP construct
-}
-
-bool OmpAttributeVisitor::HasDataSharingAttributeObject(const Symbol &object) {
-  auto it{dataSharingAttributeObjects_.find(object)};
-  return it != dataSharingAttributeObjects_.end();
 }
 
 Symbol *OmpAttributeVisitor::ResolveOmpCommonBlockName(
@@ -6656,11 +7278,9 @@ void OmpAttributeVisitor::ResolveOmpObject(
               // 2.15.3 When a named common block appears in a list, it has the
               // same meaning as if every explicit member of the common block
               // appeared in the list
-              for (const Symbol &object :
-                  symbol->get<CommonBlockDetails>().objects()) {
-                Symbol &mutableObject{const_cast<Symbol &>(object)};
+              for (auto &object : symbol->get<CommonBlockDetails>().objects()) {
                 if (auto *resolvedObject{
-                        ResolveOmp(mutableObject, ompFlag, currScope())}) {
+                        ResolveOmp(*object, ompFlag, currScope())}) {
                   AddToContextObjectWithDSA(*resolvedObject, ompFlag);
                 }
               }
@@ -6692,27 +7312,6 @@ Symbol *OmpAttributeVisitor::ResolveOmp(
   }
 }
 
-Symbol *OmpAttributeVisitor::DeclarePrivateAccessEntity(
-    const parser::Name &name, Symbol::Flag ompFlag, Scope &scope) {
-  if (!name.symbol) {
-    return nullptr; // not resolved by Name Resolution step, do nothing
-  }
-  name.symbol = DeclarePrivateAccessEntity(*name.symbol, ompFlag, scope);
-  return name.symbol;
-}
-
-Symbol *OmpAttributeVisitor::DeclarePrivateAccessEntity(
-    Symbol &object, Symbol::Flag ompFlag, Scope &scope) {
-  if (object.owner() != currScope()) {
-    auto &symbol{MakeAssocSymbol(object.name(), object, scope)};
-    symbol.set(ompFlag);
-    return &symbol;
-  } else {
-    object.set(ompFlag);
-    return &object;
-  }
-}
-
 Symbol *OmpAttributeVisitor::DeclareOrMarkOtherAccessEntity(
     const parser::Name &name, Symbol::Flag ompFlag) {
   Symbol *prev{currScope().FindSymbol(name.source)};
@@ -6732,11 +7331,11 @@ Symbol *OmpAttributeVisitor::DeclareOrMarkOtherAccessEntity(
   return &object;
 }
 
-static bool WithMultipleAppearancesException(
-    const Symbol &symbol, Symbol::Flag ompFlag) {
-  return (ompFlag == Symbol::Flag::OmpFirstPrivate &&
+static bool WithMultipleAppearancesOmpException(
+    const Symbol &symbol, Symbol::Flag flag) {
+  return (flag == Symbol::Flag::OmpFirstPrivate &&
              symbol.test(Symbol::Flag::OmpLastPrivate)) ||
-      (ompFlag == Symbol::Flag::OmpLastPrivate &&
+      (flag == Symbol::Flag::OmpLastPrivate &&
           symbol.test(Symbol::Flag::OmpFirstPrivate));
 }
 
@@ -6749,7 +7348,7 @@ void OmpAttributeVisitor::CheckMultipleAppearances(
     }
   }
   if (HasDataSharingAttributeObject(*target) &&
-      !WithMultipleAppearancesException(symbol, ompFlag)) {
+      !WithMultipleAppearancesOmpException(symbol, ompFlag)) {
     context_.Say(name.source,
         "'%s' appears in more than one data-sharing clause "
         "on the same OpenMP directive"_err_en_US,
@@ -6826,6 +7425,10 @@ void ResolveNamesVisitor::ResolveExecutionParts(const ProgramTree &node) {
   for (const auto &child : node.children()) {
     ResolveExecutionParts(child);
   }
+}
+
+void ResolveNamesVisitor::ResolveAccParts(const parser::ProgramUnit &node) {
+  AccAttributeVisitor{context(), *this}.Walk(node);
 }
 
 void ResolveNamesVisitor::ResolveOmpParts(const parser::ProgramUnit &node) {

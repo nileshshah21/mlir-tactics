@@ -1,11 +1,14 @@
 set(LLVM_LINK_COMPONENTS
-  MLIRTableGen
+  Demangle
   Support
+  TableGen
   )
 
 add_tablegen(mlir-tblgen MLIR
   DialectGen.cpp
   EnumsGen.cpp
+  MatchersGen.cpp
+  lang/Lexer.cpp
   LLVMIRConversionGen.cpp
   LLVMIRIntrinsicGen.cpp
   mlir-tblgen.cpp
@@ -19,4 +22,10 @@ add_tablegen(mlir-tblgen MLIR
   SPIRVUtilsGen.cpp
   StructsGen.cpp
   )
+
 set_target_properties(mlir-tblgen PROPERTIES FOLDER "Tablegenning")
+target_link_libraries(mlir-tblgen
+  PRIVATE
+  MLIRTableGen)
+
+mlir_check_all_link_libraries(mlir-tblgen)
