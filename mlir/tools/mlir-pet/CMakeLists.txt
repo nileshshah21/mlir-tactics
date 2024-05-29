@@ -6,6 +6,9 @@ add_llvm_tool(mlir-pet
   Lib/islAst.cc
   Lib/mlirCodegen.cc
   Lib/islNodeBuilder.cc
+  Lib/access_patterns.cc
+  Lib/builders.cc
+  Lib/matchers.cc
 )
 
 #debug

@@ -1,15 +1,21 @@
+#include "Lib/access_patterns.h"
+#include "Lib/builders.h"
 #include "Lib/ctx.h"
 #include "Lib/islAst.h"
 #include "Lib/islNodeBuilder.h"
+#include "Lib/matchers.h"
 #include "Lib/mlirCodegen.h"
 #include "Lib/scop.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/WithColor.h"
 #include <fstream>
 #include <iostream>
+
+#define DEBUG_TYPE "pet-to-mlir"
 
 using namespace llvm;
 
@@ -46,6 +52,12 @@ static cl::opt<bool> dumpAst("dump-ast", llvm::cl::desc("Pretty print the ast"),
 
 static cl::list<std::string> includeDirs("I", cl::desc("include search path"),
                                          cl::cat(toolOptions));
+
+static cl::opt<bool> enableLoopTactics("enable-loop-tactics",
+                                       llvm::cl::desc("Enable loop tactics"),
+                                       llvm::cl::init(false),
+                                       cl::cat(toolOptions));
+
 // check if the schedule is bounded.
 static bool isUnbounded(isl::schedule schedule) {
   auto isUnBoundedSet = [](isl::set set) -> bool {
@@ -82,6 +94,117 @@ static isl::schedule rescheduleWithIsl(pet::Scop &scop) {
   sc = sc.set_coincidence(validity);
   auto schedule = sc.compute_schedule();
   return schedule;
+}
+
+static inline isl::schedule_node
+rebuild(isl::schedule_node node,
+        const builders::ScheduleNodeBuilder &replacement) {
+  // this may not be always legal...
+  node = node.cut();
+  node = replacement.insertAt(node);
+  return node;
+}
+
+static isl::schedule_node
+replaceOnce(isl::schedule_node node,
+            const matchers::ScheduleNodeMatcher &pattern,
+            const builders::ScheduleNodeBuilder &replacement) {
+  if (matchers::ScheduleNodeMatcher::isMatching(pattern, node)) {
+    LLVM_DEBUG(dbgs() << "match success!\n");
+    node = rebuild(node, replacement);
+  }
+  return node;
+}
+
+static isl::schedule_node
+replaceDFSPreorderOnce(isl::schedule_node node,
+                       const matchers::ScheduleNodeMatcher &pattern,
+                       const builders::ScheduleNodeBuilder &replacement) {
+  node = replaceOnce(node, pattern, replacement);
+  if ((isl_schedule_node_get_type(node.get())) == isl_schedule_node_mark) {
+    return node;
+  }
+  for (int i = 0; i < node.n_children(); ++i) {
+    node = replaceDFSPreorderOnce(node.child(i), pattern, replacement).parent();
+  }
+  return node;
+}
+
+static isl::schedule runDetection(pet::Scop &scop) {
+  auto root = scop.getSchedule().get_root();
+
+  isl::schedule_node ijk;
+
+  using namespace matchers;
+
+  // check if the partial schedule is 3d.
+  auto is3d = [](isl::schedule_node band) {
+    auto umap = band.child(0).get_prefix_schedule_union_map();
+    if (umap.n_map() != 1)
+      return false;
+    auto map = isl::map::from_union_map(umap);
+    return map.dim(isl::dim::out) == 3;
+  };
+
+  auto hasGemmAccess = [&scop](isl::schedule_node band) {
+    auto reads = scop.getReads();
+    auto writes = scop.getMustWrites();
+    reads = reads.apply_domain(band.child(0).get_prefix_schedule_union_map());
+    writes = writes.apply_domain(band.child(0).get_prefix_schedule_union_map());
+
+    using namespace matchers;
+    auto ctx = band.get_ctx();
+    auto _i = placeholder(ctx);
+    auto _ii = placeholder(ctx);
+    auto _j = placeholder(ctx);
+    auto _jj = placeholder(ctx);
+    auto _k = placeholder(ctx);
+    auto _A = arrayPlaceholder();
+    auto _B = arrayPlaceholder();
+    auto _C = arrayPlaceholder();
+
+    // placeholder are *not* reused across different calls of allOf.
+    auto psRead =
+        allOf(access(_C, _i, _j), access(_A, _i, _k), access(_B, _k, _j));
+    auto psWrite = allOf(access(_C, _ii, _jj));
+    auto readMatches = match(reads, psRead);
+    auto writeMatches = match(writes, psWrite);
+
+    if ((readMatches.size() != 1) || (writeMatches.size() != 1))
+      return false;
+
+    if ((readMatches[0][_i].payload().inputDimPos_ !=
+         writeMatches[0][_ii].payload().inputDimPos_) ||
+        (readMatches[0][_j].payload().inputDimPos_ !=
+         writeMatches[0][_jj].payload().inputDimPos_))
+      return false;
+    return true;
+  };
+
+  auto isGemmLike = [&](isl::schedule_node band) {
+    return is3d(band) && hasGemmAccess(band);
+  };
+
+  // clang-format off
+  auto matcher =
+  band(isGemmLike, ijk, 
+    leaf());
+  // clang-format on
+
+  auto builder = builders::ScheduleNodeBuilder();
+  {
+    using namespace builders;
+    auto scheduleIJK = [&]() { return ijk.band_get_partial_schedule(); };
+    auto marker = [&]() {
+      return isl::id::alloc(ijk.get_ctx(), "MatMul", nullptr);
+    };
+    // clang-format off
+    builder = mark(marker, band(scheduleIJK));
+    // clang-format on
+  }
+
+  root = replaceDFSPreorderOnce(root, matcher, builder);
+  return root.get_schedule();
 }
 
 int main(int argc, char **argv) {
@@ -151,6 +274,14 @@ int main(int argc, char **argv) {
       return -1;
     }
     petScop.schedule() = newSchedule;
+  }
+
+  if (enableLoopTactics) {
+    if (!reschedule) {
+      outs() << "use loop tactics with the reschedule option\n";
+      return -1;
+    }
+    petScop.schedule() = runDetection(petScop);
   }
 
   if (dumpSchedule)
