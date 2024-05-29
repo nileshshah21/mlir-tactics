@@ -15,6 +15,12 @@
 
 include "mlir/Pass/PassBase.td"
 
+def AffineReorder : FunctionPass<"affine-load-reorder">{
+  let summary = "Reorder affine loads";
+  let constructor = "mlir::createAffineReorderPass()";
+  let description = [{reorder affine loads}]; 
+}
+
 def AffineDataCopyGeneration : FunctionPass<"affine-data-copy-generate"> {
   let summary = "Generate explicit copying for affine memory operations";
   let constructor = "mlir::createAffineDataCopyGenerationPass()";

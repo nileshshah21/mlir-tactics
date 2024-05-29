@@ -31,6 +31,9 @@ template <typename T> class OperationPass;
 /// layout map.
 std::unique_ptr<OperationPass<FuncOp>> createSimplifyAffineStructuresPass();
 
+/// Reorder loads 
+std::unique_ptr<OperationPass<FuncOp>> createAffineReorderPass();
+
 /// Creates a loop invariant code motion pass that hoists loop invariant
 /// operations out of affine loops.
 std::unique_ptr<OperationPass<FuncOp>>
