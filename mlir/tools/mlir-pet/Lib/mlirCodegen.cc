@@ -1027,7 +1027,7 @@ AffineForOp MLIRCodegen::createLoop(int lb, AffineExpr ubExpr, std::string ubId,
   loop.getBody()->clear();
 
   builder_.setInsertionPointToStart(loop.getBody());
-  builder_.create<AffineTerminatorOp>(builder_.getUnknownLoc());
+  builder_.create<AffineYieldOp>(builder_.getUnknownLoc());
   builder_.setInsertionPointToStart(loop.getBody());
 
   return loop;
@@ -1051,7 +1051,7 @@ AffineForOp MLIRCodegen::createLoop(AffineExpr lbExpr, std::string lbId, int ub,
   loop.getBody()->clear();
 
   builder_.setInsertionPointToStart(loop.getBody());
-  builder_.create<AffineTerminatorOp>(builder_.getUnknownLoc());
+  builder_.create<AffineYieldOp>(builder_.getUnknownLoc());
   builder_.setInsertionPointToStart(loop.getBody());
 
   return loop;
@@ -1076,7 +1076,7 @@ AffineForOp MLIRCodegen::createLoop(AffineExpr lbExpr, std::string lbId,
   loop.getBody()->clear();
 
   builder_.setInsertionPointToStart(loop.getBody());
-  builder_.create<AffineTerminatorOp>(builder_.getUnknownLoc());
+  builder_.create<AffineYieldOp>(builder_.getUnknownLoc());
   builder_.setInsertionPointToStart(loop.getBody());
 
   return loop;
